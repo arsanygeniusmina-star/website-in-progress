@@ -484,7 +484,7 @@ function executeAgentOps(ops){
       continue;
     }
     if(k==='source_js'){
-      const js=String(o.js||'').replace(/<\\\\/script>/gi,'<\\\\/script>').trim();
+      const js=String(o.js||'').replace(/<\\/script>/gi,'<\\/script>').trim();
       if(js){state.engineering=state.engineering||{};state.engineering.customJs=((state.engineering.customJs||'')+'\\n// WIP source extension\\n'+js).slice(-24000);}
       continue;
     }

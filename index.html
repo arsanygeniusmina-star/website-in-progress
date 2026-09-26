@@ -26,7 +26,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 1
 <div class="prompt"><textarea id="prompt" rows="2" placeholder="Tell me what you want to build or change…"></textarea><button onclick="send()">Send</button></div>
 <div class="voice-row"><button class="mic" id="mic" onclick="toggleVoice()">🎙 Start voice chat</button><button class="voice" id="speakBtn" onclick="toggleSpeech()">🔊 Voice replies: ON</button></div>
 <div class="mode"><button id="localMode" class="active" onclick="loadBrain()">🧠 Load maximum brain</button><button onclick="clearAIHistory()">Clear memory</button></div>
-<div class="status" id="aiStatus">Maximum browser brain ready · strongest compatible model first, automatic fallback when hardware requires it</div>
+<div class="status" id="aiStatus">Maximum browser brain ready · capability-ranked model selection with automatic hardware fallback</div>
 <div class="quick" id="quick"></div></div></div>
 <div class="section"><div class="label">INSPECTOR</div><div id="inspector" class="empty">Select an element on the canvas to edit it.</div></div>
 <div class="section"><div class="label">ACTIVITY</div><div id="log" class="log"></div></div>
@@ -49,17 +49,18 @@ window.WipBrainReady = (async () => {
     function rankedModels() {
       const records = webllm.prebuiltAppConfig.model_list || [];
       const score = (id) => {
-        if (/Hermes-3-Llama-3\.1-8B.*q4f32/i.test(id)) return 1000;
-        if (/Hermes-3-Llama-3\.1-8B.*q4f16/i.test(id)) return 980;
-        if (/DeepSeek-R1-Distill-Llama-8B.*q4f16/i.test(id)) return 960;
-        if (/Llama-3\.1-8B.*q4f32/i.test(id)) return 940;
-        if (/Llama-3\.1-8B.*q4f16/i.test(id)) return 920;
-        if (/Hermes-2-Pro-Llama-3-8B.*q4f32/i.test(id)) return 900;
-        if (/Hermes-2-Pro-Llama-3-8B.*q4f16/i.test(id)) return 880;
-        if (/Hermes-3-Llama-3\.2-3B.*q4f16/i.test(id)) return 700;
-        if (/Llama-3\.2-3B.*q4f16/i.test(id)) return 680;
-        if (/Llama-3\.2-1B/i.test(id)) return 300;
-        return 0;
+        const s=String(id);
+        let score=0;
+        const param=(s.match(/(?:-|\\b)(\\d+(?:\\.\\d+)?)[bB](?:-|\\b)/)||[])[1];
+        if(param)score+=Math.min(3200,Number(param)*120);
+        if(/32B|30B|27B|22B|14B|12B|9B|8B/i.test(s))score+=1200;
+        if(/Hermes|DeepSeek|Qwen|Mistral|Llama|Phi/i.test(s))score+=500;
+        if(/function.?calling|tool/i.test(s))score+=250;
+        if(/q4f32/i.test(s))score+=110;
+        else if(/q4f16/i.test(s))score+=90;
+        else if(/q3f16/i.test(s))score+=60;
+        if(/1B|0\.5B/i.test(s))score-=300;
+        return score;
       };
       return [...records].sort((a,b)=>score(b.model_id)-score(a.model_id));
     }

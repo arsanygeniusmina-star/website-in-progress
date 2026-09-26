@@ -25,8 +25,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 1
 <div id="chat" class="chat"></div>
 <div class="prompt"><textarea id="prompt" rows="2" placeholder="Tell me what you want to build or change…"></textarea><button onclick="send()">Send</button></div>
 <div class="voice-row"><button class="mic" id="mic" onclick="toggleVoice()">🎙 Start voice chat</button><button class="voice" id="speakBtn" onclick="toggleSpeech()">🔊 Voice replies: ON</button></div>
-<div class="mode"><button id="localMode" class="active" onclick="loadBrain()">🧠 Load AI brain</button><button onclick="clearAIHistory()">Clear memory</button></div>
-<div class="status" id="aiStatus">Browser AI ready · first load downloads the model once and caches it locally</div>
+<div class="mode"><button id="localMode" class="active" onclick="loadBrain()">🧠 Load maximum brain</button><button onclick="clearAIHistory()">Clear memory</button></div>
+<div class="status" id="aiStatus">Maximum browser brain ready · strongest compatible model first, automatic fallback when hardware requires it</div>
 <div class="quick" id="quick"></div></div></div>
 <div class="section"><div class="label">INSPECTOR</div><div id="inspector" class="empty">Select an element on the canvas to edit it.</div></div>
 <div class="section"><div class="label">ACTIVITY</div><div id="log" class="log"></div></div>
@@ -39,61 +39,90 @@ window.WipBrainReady = (async () => {
     const webllm = await import('https://esm.run/@mlc-ai/web-llm');
     let engine = null;
     let modelId = null;
-    const preferred = [
-      'Llama-3.2-3B-Instruct-q4f16_1-MLC',
-      'Llama-3.2-1B-Instruct-q4f16_1-MLC'
-    ];
+    let modelRecord = null;
 
     function status(message) {
       const el = document.getElementById('aiStatus');
       if (el) el.textContent = message;
     }
 
-    async function load() {
-      if (engine) return engine;
-      if (!('gpu' in navigator)) {
-        throw new Error('WebGPU is not available in this browser.');
-      }
-      const available = webllm.prebuiltAppConfig.model_list.map(m => m.model_id);
-      modelId = preferred.find(id => available.includes(id)) || available.find(id => /Llama-3.2-1B/.test(id));
-      if (!modelId) throw new Error('No compatible browser model is available.');
-      status('Downloading the AI brain · first run only…');
-      engine = await webllm.CreateMLCEngine(modelId, {
-        initProgressCallback: p => {
-          const pct = Math.round((p.progress || 0) * 100);
-          status('Loading AI brain · ' + pct + '%');
-        }
-      });
-      status('AI brain online · ' + modelId.replace(/-q4f16_1-MLC$/,''));
-      return engine;
+    function rankedModels() {
+      const records = webllm.prebuiltAppConfig.model_list || [];
+      const score = (id) => {
+        if (/Hermes-3-Llama-3\.1-8B.*q4f32/i.test(id)) return 1000;
+        if (/Hermes-3-Llama-3\.1-8B.*q4f16/i.test(id)) return 980;
+        if (/DeepSeek-R1-Distill-Llama-8B.*q4f16/i.test(id)) return 960;
+        if (/Llama-3\.1-8B.*q4f32/i.test(id)) return 940;
+        if (/Llama-3\.1-8B.*q4f16/i.test(id)) return 920;
+        if (/Hermes-2-Pro-Llama-3-8B.*q4f32/i.test(id)) return 900;
+        if (/Hermes-2-Pro-Llama-3-8B.*q4f16/i.test(id)) return 880;
+        if (/Hermes-3-Llama-3\.2-3B.*q4f16/i.test(id)) return 700;
+        if (/Llama-3\.2-3B.*q4f16/i.test(id)) return 680;
+        if (/Llama-3\.2-1B/i.test(id)) return 300;
+        return 0;
+      };
+      return [...records].sort((a,b)=>score(b.model_id)-score(a.model_id));
     }
 
-    async function run(messages) {
+    async function load() {
+      if (engine) return engine;
+      if (!navigator.gpu) throw new Error('WebGPU is not available in this browser.');
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error('No compatible GPU adapter was found.');
+      const candidates = rankedModels();
+      if (!candidates.length) throw new Error('No compatible browser AI models were found.');
+
+      let lastError = null;
+      for (const candidate of candidates) {
+        try {
+          status('Loading maximum brain · ' + candidate.model_id + '…');
+          const e = await webllm.CreateMLCEngine(candidate.model_id, {
+            initProgressCallback: p => {
+              const pct = Math.round((p.progress || 0) * 100);
+              status('Loading maximum brain · ' + pct + '%');
+            },
+            logLevel: 'ERROR'
+          });
+          engine = e;
+          modelId = candidate.model_id;
+          modelRecord = candidate;
+          status('Maximum brain online · ' + modelId.replace(/-q4f(?:16|32)_1-MLC.*$/,''));
+          return engine;
+        } catch (error) {
+          lastError = error;
+          console.warn('Model failed; trying next candidate:', candidate.model_id, error);
+        }
+      }
+      throw lastError || new Error('Every compatible model failed to load.');
+    }
+
+    async function run(messages, settings={}) {
       const e = await load();
       const response = await e.chat.completions.create({
         model: modelId,
         messages,
-        temperature: 0.35,
-        top_p: 0.9,
-        max_tokens: 2200,
+        temperature: settings.temperature ?? 0.22,
+        top_p: settings.top_p ?? 0.9,
+        max_tokens: settings.max_tokens ?? 2800,
         stream: false,
         response_format: { type: 'json_object' }
       });
       const content = response?.choices?.[0]?.message?.content || '';
       try { return JSON.parse(content); } catch {
-        const match = content.match(/\{[\s\S]*\}/);
-        if (!match) throw new Error('The AI returned an invalid plan.');
+        const match = content.match(/{[sS]*}/);
+        if (!match) throw new Error('The AI returned invalid structured output.');
         return JSON.parse(match[0]);
       }
     }
 
-    window.WipBrain = { load, run, getModel: () => modelId };
+    window.WipBrain = { load, run, getModel:()=>modelId, getModelRecord:()=>modelRecord };
     return window.WipBrain;
   } catch (error) {
     window.WipBrain = {
-      async load() { throw error; },
-      async run() { throw error; },
-      getModel() { return null; }
+      async load(){ throw error; },
+      async run(){ throw error; },
+      getModel(){ return null; },
+      getModelRecord(){ return null; }
     };
     return window.WipBrain;
   }
@@ -111,8 +140,8 @@ make('text','Tell the builder what you want. It can create pages, sections, card
 make('button','Start building',95,395,190,56,16,'#111','#fff'),
 make('card','Responsive\nReal components\nWorking interactions',690,350,300,190,18,'#f4f4f1','#111')
 ]});
-let state={pages:[starter()],page:0,selected:null,site:{name:'Untitled Website',font:'Inter',accent:'#111'}};
-try{const x=JSON.parse(localStorage.getItem('wip-pro'));if(x?.pages)state=x}catch{}
+let state={pages:[starter()],page:0,selected:null,site:{name:'Untitled Website',font:'Inter',accent:'#111'},conversation:[],projectMemory:{facts:[],decisions:[],preferences:[],constraints:[]},agent:{ready:false,runs:0}};
+try{const x=JSON.parse(localStorage.getItem('wip-pro'));if(x?.pages)state={...state,...x,conversation:x.conversation||[],projectMemory:x.projectMemory||{facts:[],decisions:[],preferences:[],constraints:[]},agent:x.agent||{ready:false,runs:0}}}catch{}
 const $=id=>document.getElementById(id),cur=()=>state.pages[state.page],sel=()=>cur().elements.find(e=>e.id===state.selected);
 function save(){localStorage.setItem('wip-pro',JSON.stringify(state));$('projectStatus').textContent='Autosaved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
 function checkpoint(){history.push(JSON.stringify(state));if(history.length>60)history.shift();future=[]}
@@ -142,25 +171,55 @@ function newPage(name){checkpoint();state.pages.push({name:name||'Page '+(state.
 function setMode(){loadBrain()}
 async function loadBrain(){
   try{
-    $('aiStatus').textContent='Starting your browser AI…';
+    $('aiStatus').textContent='Starting maximum browser brain…';
     await window.WipBrainReady;
     await window.WipBrain.load();
-    toast('AI brain is online');
+    const model=window.WipBrain.getModel()||'browser model';
+    state.agent=state.agent||{};
+    state.agent.model=model;
+    state.agent.ready=true;
+    state.agent.lastLoaded=new Date().toISOString();
+    save();
+    toast('Maximum brain is online');
+    log('Brain online · '+model);
   }catch(e){
     console.error(e);
-    $('aiStatus').textContent='AI could not start · WebGPU is required';
+    $('aiStatus').textContent='AI could not start · '+(e?.message||'WebGPU is required');
     toast('Browser AI could not start');
-    ai('I could not start the browser AI on this device. This version does not use Ollama or a cloud API; it runs the language model directly in the browser.');
+    ai('I could not start the in-browser AI on this device. This build uses no Ollama and no cloud AI; it requires WebGPU and enough GPU memory for a supported model.');
   }
 }
 function clearAIHistory(){
   state.conversation=[];
+  state.projectMemory={facts:[],decisions:[],preferences:[],constraints:[]};
+  state.agent=state.agent||{};
+  state.agent.runs=0;
   save();
   $('chat').innerHTML='';
-  ai('Memory cleared. I still know the current website, but I will treat this as a fresh conversation.');
+  ai('Memory cleared. I still have the current website, but this is now a fresh project conversation.');
 }
 function conversationContext(){
-  return (state.conversation||[]).slice(-12).map(m=>({role:m.role,content:m.content}));
+  return (state.conversation||[]).slice(-16).map(m=>({role:m.role,content:m.content}));
+}
+function compactState(){
+  return {
+    site:state.site,
+    memory:state.projectMemory||{},
+    currentPage:cur().name,
+    currentPageIndex:state.page,
+    selected:sel()?{
+      kind:sel().kind,text:sel().text,x:sel().x,y:sel().y,w:sel().w,h:sel().h,
+      size:sel().size,bg:sel().bg,color:sel().color,radius:sel().radius,
+      animation:sel().animation,action:sel().action
+    }:null,
+    pages:state.pages.map(p=>({
+      name:p.name,bg:p.bg,
+      elements:p.elements.map(e=>({
+        id:e.id,kind:e.kind,text:e.text,x:e.x,y:e.y,w:e.w,h:e.h,size:e.size,
+        bg:e.bg,color:e.color,radius:e.radius,animation:e.animation,action:e.action
+      }))
+    }))
+  };
 }
 async function send(){
   const p=$('prompt'), text=p.value.trim();
@@ -172,15 +231,18 @@ async function send(){
   save();
   const thinking=document.createElement('div');
   thinking.className='msg thinking';
-  thinking.textContent='Thinking → understanding → planning → building → checking…';
+  thinking.textContent='Thinking → understanding → planning → building → inspecting → repairing…';
   $('chat').appendChild(thinking);
   $('chat').scrollTop=$('chat').scrollHeight;
   try{
     await window.WipBrainReady;
+    await window.WipBrain.load();
     const result=await browserAgent(text);
     thinking.remove();
-    const reply=result?.reply||'Done — I updated the website.';
+    const reply=result?.reply||'Done — I built the requested change and checked it.';
     state.conversation.push({role:'assistant',content:reply});
+    state.agent=state.agent||{};
+    state.agent.runs=(state.agent.runs||0)+1;
     save();
     ai(reply);
   }catch(e){
@@ -188,142 +250,128 @@ async function send(){
     console.error(e);
     const reason=e?.message||'Unknown AI error';
     $('aiStatus').textContent='AI error · '+reason;
-    ai('I hit an AI error: '+reason);
+    ai('I hit an AI error while building: '+reason);
     toast('AI error');
   }
 }
-async function browserAgent(userText){
-  const context={
-    site:state.site,
-    currentPage:cur().name,
-    currentPageIndex:state.page,
-    selected:sel()?{
-      kind:sel().kind,text:sel().text,x:sel().x,y:sel().y,w:sel().w,h:sel().h,
-      size:sel().size,bg:sel().bg,color:sel().color,radius:sel().radius,
-      animation:sel().animation,action:sel().action
-    }:null,
-    pages:state.pages.map(p=>({
-      name:p.name,bg:p.bg,
-      elements:p.elements.map(e=>({
-        kind:e.kind,text:e.text,x:e.x,y:e.y,w:e.w,h:e.h,size:e.size,
-        bg:e.bg,color:e.color,radius:e.radius,animation:e.animation,action:e.action
-      }))
-    }))
-  };
-  const system=`You are WIP, a custom autonomous website-building AI. You are the intelligence layer inside a visual website editor.
-Your job is to understand ordinary human conversation and BUILD the requested result, not just describe code.
-You receive the current website, previous conversation, and the newest request.
-Think like a product designer, frontend engineer, interaction designer and QA agent working together.
-You MUST output JSON only:
-{"reply":"natural concise progress/result","operations":[...]}
-Operations:
+const BRAIN_SYSTEM=`You are WIP Brain, a specialized autonomous website-building intelligence.
+
+You are the engineering brain inside a visual website editor. Do not merely describe what the user should do. Decide what the site needs and produce concrete operations that build it.
+
+You have access to:
+- the full current website state
+- recent conversation memory
+- project facts, design decisions, preferences and constraints
+
+You must understand ordinary language and multi-step intent.
+
+OUTPUT JSON ONLY:
+{
+  "reply":"1-2 sentence natural progress/result message",
+  "operations":[...],
+  "memory":{"facts":[],"decisions":[],"preferences":[],"constraints":[]}
+}
+
+Allowed operations:
 create_site {"type":"landing|portfolio|restaurant|shop|dashboard|blog|church|agency|custom"}
 add_page {"name":"..."}
 rename_page {"name":"..."}
 clear_page {}
-background {"color":"#..."}
+background {"color":"#hex"}
 theme {"theme":"dark|light|red|blue|luxury|minimal"}
-add {"kind":"nav|heading|text|button|card|image|circle|divider","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"#hex or transparent","color":"#hex","radius":0,"animation":"none|float|pulse|spin","action":"..."}
-update {"match":"unique existing text","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"...","color":"...","radius":0,"animation":"...","action":"..."}
-delete {"match":"unique existing text"}
+add {"kind":"nav|heading|text|button|card|image|circle|divider","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"#hex or transparent","color":"#hex","radius":0,"animation":"none|float|pulse|spin","action":"intent"}
+update {"match":"existing text or kind","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"...","color":"...","radius":0,"animation":"...","action":"..."}
+delete {"match":"existing text or kind"}
 
-Rules:
-- Build coherent websites, not collections of random boxes.
-- A full website request should usually create navigation, hero, multiple content sections, strong CTA, footer, and enough visual variation to feel complete.
-- Reuse and update existing elements when the user asks to change something instead of rebuilding everything.
-- Preserve the user's intent across follow-up messages.
-- You can use multiple operations in one response.
-- For positioning, the editor canvas is 1200x760; keep x between 25-1130 and y between 15-730.
-- Prefer clean spacing and alignment. Avoid overlap unless intentional.
-- Use concise, realistic copy instead of placeholder lorem ipsum.
-- For interactions, action can be: "alert:message", "scroll:element-text", "open page:PageName", "open-image".
-- When asked to make something responsive/mobile friendly, improve the component widths, hierarchy and spacing rather than only changing text.
-- Never say you cannot edit the site when you can express the change through operations.
-- Do not output Markdown fences, explanations, or extra keys.`;
-  const messages=[
-    {role:'system',content:system},
-    ...conversationContext().slice(0,-1),
-    {role:'user',content:'CURRENT WEBSITE STATE:\n'+JSON.stringify(context)+'\n\nLATEST REQUEST:\n'+userText}
-  ];
-  const result=await window.WipBrain.run(messages);
-  executeAgentOps(result?.operations||[]);
-  return result;
-}
-function findByText(match){
-  const q=String(match||'').trim().toLowerCase();
-  if(!q)return null;
-  const all=state.pages.flatMap((p,pi)=>p.elements.map(e=>({...e,_page:pi})));
-  return all.find(e=>String(e.text||'').toLowerCase()===q)
-    || all.find(e=>String(e.text||'').toLowerCase().includes(q))
-    || all.find(e=>String(e.kind||'').toLowerCase()===q)
-    || null;
-}
-function applyTheme(theme){
-  const t=String(theme).toLowerCase();
-  const themes={
-    dark:{bg:'#0b0b0d',fg:'#f7f7f5',muted:'#b9b9be',panel:'#17171b',accent:'#ffffff'},
-    light:{bg:'#ffffff',fg:'#111111',muted:'#666666',panel:'#f2f2ef',accent:'#111111'},
-    red:{bg:'#fff8f6',fg:'#151515',muted:'#6b625f',panel:'#ffffff',accent:'#a82020'},
-    blue:{bg:'#f7f9ff',fg:'#111827',muted:'#667085',panel:'#ffffff',accent:'#315efb'},
-    luxury:{bg:'#0e0e0f',fg:'#f6f0df',muted:'#b6ad9a',panel:'#181715',accent:'#d6a85a'},
-    minimal:{bg:'#ffffff',fg:'#111111',muted:'#686868',panel:'#f5f5f2',accent:'#111111'}
-  };
-  const v=themes[t]||themes.minimal;
-  state.pages.forEach(p=>{
-    p.bg=v.bg;
-    p.elements.forEach(e=>{
-      if(e.kind==='button'){e.bg=v.accent;e.color=v.bg}
-      else if(e.kind==='card'){e.bg=v.panel;e.color=v.fg}
-      else if(e.kind==='heading'||e.kind==='nav'){e.color=v.fg}
-      else if(e.kind==='text'){e.color=v.muted}
-    });
-  });
-  state.site.accent=v.accent;
-}
-function executeAgentOps(ops){
-  if(!Array.isArray(ops)||!ops.length)return;
-  checkpoint();
-  for(const o of ops){
-    const k=o?.op||o?.action;
-    if(k==='clear_page'){cur().elements=[];state.selected=null;continue}
-    if(k==='create_site'){generateSite(String(o.type||'landing'));continue}
-    if(k==='add_page'){state.pages.push({name:String(o.name||'Page'),bg:'#fff',elements:[]});state.page=state.pages.length-1;state.selected=null;continue}
-    if(k==='rename_page'){cur().name=String(o.name||cur().name);continue}
-    if(k==='background'){cur().bg=String(o.color||cur().bg);continue}
-    if(k==='theme'){applyTheme(o.theme);continue}
-    if(k==='add'){
-      const kind=['nav','heading','text','button','card','image','circle','divider'].includes(o.kind)?o.kind:'text';
-      const e=make(kind,String(o.text??''),Number(o.x??60),Number(o.y??80),Number(o.w??320),Number(o.h??100),Number(o.size??18),String(o.bg??'transparent'),String(o.color??'#111'));
-      e.radius=Number.isFinite(+o.radius)?+o.radius:e.radius;
-      e.animation=['none','float','pulse','spin'].includes(o.animation)?o.animation:'none';
-      e.action=String(o.action||'');
-      cur().elements.push(e);
-      state.selected=e.id;
-      continue
-    }
-    if(k==='update'){
-      const target=findByText(o.match);
-      if(target){
-        const pageIndex=target._page;
-        const real=state.pages[pageIndex].elements.find(x=>x.id===target.id);
-        if(real){
-          for(const key of ['text','bg','color','animation','action'])if(o[key]!=null)real[key]=String(o[key]);
-          for(const key of ['x','y','w','h','size','radius'])if(o[key]!=null)real[key]=Number(o[key]);
-          if(pageIndex!==state.page){state.page=pageIndex;state.selected=real.id}else state.selected=real.id;
-        }
-      }
-      continue
-    }
-    if(k==='delete'){
-      const target=findByText(o.match);
-      if(target){
-        state.pages[target._page].elements=state.pages[target._page].elements.filter(x=>x.id!==target.id);
-        state.selected=null;
-      }
+BUILD RULES:
+- Think in outcomes, not keywords.
+- Use the current website as the source of truth.
+- A full website request should become a coherent experience with navigation, hero, meaningful sections, CTA, footer and consistent visual hierarchy.
+- An iteration request should preserve existing work and modify only what needs to change.
+- Follow the complete conversation, not just the latest sentence.
+- Remember useful preferences and constraints.
+- Avoid random boxes, collisions, duplicated sections, lorem ipsum and meaningless filler.
+- Use realistic copy.
+- Keep all geometry inside the 1200x760 editor canvas.
+- Use consistent spacing, alignment and typography.
+- Actions may be "alert:message", "scroll:element-text", "open page:PageName", or "open-image".
+- Never output code, markdown fences, chain-of-thought, or extra schema keys.`;
+
+function updateProjectMemory(mem){
+  if(!mem)return;
+  const current=state.projectMemory||{facts:[],decisions:[],preferences:[],constraints:[]};
+  for(const k of ['facts','decisions','preferences','constraints']){
+    if(Array.isArray(mem[k])){
+      current[k]=[...new Set([...(current[k]||[]),...mem[k].map(String)])].slice(-50);
     }
   }
-  log('AI built: '+ops.length+' operation'+(ops.length===1?'':'s'));
-  render();
+  state.projectMemory=current;
+}
+async function browserAgent(userText){
+  const context=compactState();
+  const messages=[
+    {role:'system',content:BRAIN_SYSTEM},
+    ...conversationContext().slice(0,-1),
+    {role:'user',content:'CURRENT PROJECT STATE:\n'+JSON.stringify(context)+'\n\nLATEST USER REQUEST:\n'+userText}
+  ];
+  const result=await window.WipBrain.run(messages,{temperature:0.22,max_tokens:3000});
+  updateProjectMemory(result?.memory);
+  executeAgentOps(result?.operations||[]);
+  await selfCheckAndRepair(userText);
+  return result;
+}
+function validateSite(){
+  const issues=[];
+  const ids=new Set();
+  for(const [pi,p] of state.pages.entries()){
+    if(!p.name||!String(p.name).trim())issues.push('Page '+pi+' has no name.');
+    for(const e of (p.elements||[])){
+      if(ids.has(e.id))issues.push('Duplicate element id found.');
+      ids.add(e.id);
+      if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.w)||!Number.isFinite(e.h))issues.push('Element '+e.text+' has invalid geometry.');
+      if(e.w<=4||e.h<=0)issues.push('Element '+e.text+' is effectively invisible.');
+      if(e.x<15||e.y<10||e.x+e.w>1185||e.y+e.h>755)issues.push('Element '+e.text+' is outside the editor canvas.');
+      if(String(e.text||'').trim().length>260)issues.push('Element '+e.text.slice(0,40)+' has excessive copy.');
+    }
+    if(p.elements.length>4 && !p.elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');
+    if(p.elements.length>5 && !p.elements.some(e=>e.kind==='heading'))issues.push('Page '+p.name+' has no heading.');
+  }
+  return [...new Set(issues)].slice(0,18);
+}
+async function selfCheckAndRepair(userText){
+  let issues=validateSite();
+  for(let pass=1;pass<=2;pass++){
+    $('aiStatus').textContent='Inspecting build · AI QA pass '+pass;
+    const reviewPrompt='Perform a strict senior frontend/UX QA pass on the website after the latest build. Look for missing requested functionality, broken hierarchy, collisions, poor spacing, weak copy, missing navigation, obvious canvas overflow and inconsistent styling. Return JSON ONLY: {"approved":true|false,"summary":"brief","repairOperations":[...],"memory":{"facts":[],"decisions":[],"preferences":[],"constraints":[]}}. Use only the allowed operations. Do not rewrite a healthy site. User request: '+userText+'\nDeterministic validation: '+JSON.stringify(issues)+'\nCurrent state: '+JSON.stringify(compactState());
+    const review=await window.WipBrain.run([
+      {role:'system',content:BRAIN_SYSTEM+'\nYou are now the senior QA and repair agent. Inspect the already-built site. Your only job is to find real problems and return targeted repair operations. Never expose hidden reasoning.'},
+      {role:'user',content:reviewPrompt}
+    ],{temperature:0.12,max_tokens:2400});
+    updateProjectMemory(review?.memory);
+    const repairs=Array.isArray(review?.repairOperations)?review.repairOperations:[];
+    if(repairs.length){
+      executeAgentOps(repairs);
+      issues=validateSite();
+      continue;
+    }
+    if(!issues.length || review?.approved!==false)break;
+    if(issues.length){
+      const safeFix=[];
+      for(const issue of issues){
+        const m=issue.match(/Element (.+?) is outside the editor canvas/);
+        if(m){
+          const e=findByText(m[1]);
+          if(e)safeFix.push({op:'update',match:e.text,x:Math.max(20,Math.min(1120,e.x)),y:Math.max(15,Math.min(700,e.y)),w:Math.max(40,Math.min(1120,e.w)),h:Math.max(20,Math.min(700,e.h))});
+        }
+      }
+      if(safeFix.length){executeAgentOps(safeFix);issues=validateSite();continue}
+    }
+    break;
+  }
+  state.agent=state.agent||{};
+  state.agent.lastQuality={issues:validateSite(),checkedAt:new Date().toISOString()};
+  $('aiStatus').textContent='Maximum brain · build checked';
+  save();
 }
 function buildFromLanguage(t){const l=t.toLowerCase();if(l.match(/\b(undo|go back)\b/))return undo(true);if(l.match(/\bredo\b/))return redo(true);
 if(/^(hi|hello|hey|yo|sup)\b/i.test(t.trim()))return 'Hey! Tell me what you want to build. You can describe the whole website in one sentence, including its pages, style, sections and interactions.';

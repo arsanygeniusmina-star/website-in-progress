@@ -495,12 +495,12 @@ function executeAgentOps(ops){
     if(k==='source_file'){
       const path=String(o.path||'').trim().replace(/^\\/+/,'' );
       const content=String(o.content||'');
-      const safe=/^(app|components|lib|scripts|public)\\/[A-Za-z0-9._/\\-]+\\.(?:tsx?|css|mjs|json|md)$/.test(path)||/^README\\.md$/.test(path)||/^package\\.json$/.test(path)||/^tsconfig\\.json$/.test(path)||/^next-env\\.d\\.ts$/.test(path);
-      if(safe&&content){state.engineering=state.engineering||{};state.engineering.files={...(state.engineering.files||{}),[path]:content.slice(0,60000)};}
-      continue;
-    }
-    if(k==='source_patch'){
-      const path=String(o.path||'').trim().replace(/^\\/+/,'' );
+      const cleanPath=String(o.path||'').trim().replaceAll('\\','/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/');
+      const path=cleanPath;
+      const content=String(o.content||'');
+      const allowedRoot=['app/','components/','lib/','scripts/','public/'].some(root=>path.startsWith(root));
+      const allowedExt=/\.(tsx?|css|mjs|json|md)$/.test(path);
+      const safe=allowedRoot&&allowedExt&&!path.includes('..');
       const find=String(o.find??'');
       const replacement=String(o.replace??'');
       const files=state.engineering?.files||{};

@@ -327,6 +327,11 @@ function updateProjectMemory(mem){
 }
 async function browserAgent(userText){
   const context=compactState();
+  const transactionSnapshot=JSON.stringify(state);
+  const beforeIssues=validateSite();
+  state.agent=state.agent||{};
+  state.agent.currentTask={request:userText,startedAt:new Date().toISOString(),status:'planning'};
+  $('aiStatus').textContent='Planning build…';
   const messages=[
     {role:'system',content:BRAIN_SYSTEM},
     ...conversationContext().slice(0,-1),
@@ -334,8 +339,22 @@ async function browserAgent(userText){
   ];
   const result=await window.WipBrain.run(messages,{temperature:0.22,max_tokens:3000});
   updateProjectMemory(result?.memory);
+  state.agent.currentTask.status='building';
   executeAgentOps(result?.operations||[]);
+  const buildIssues=validateSite();
   await selfCheckAndRepair(userText);
+  const finalIssues=validateSite();
+  if(finalIssues.length>beforeIssues.length){
+    state=JSON.parse(transactionSnapshot);
+    state.agent=state.agent||{};
+    state.agent.lastRollback={reason:'QA score worsened after build',rolledBackAt:new Date().toISOString(),before:beforeIssues.length,after:finalIssues.length};
+    save();
+    render();
+    log('AI transaction rolled back · build quality worsened');
+    $('aiStatus').textContent='Build rolled back · previous healthy state restored';
+    return {reply:'I detected that the attempted change made the site less healthy, so I restored the previous version automatically.',operations:[],memory:{}};
+  }
+  state.agent.currentTask.status='complete';
   return result;
 }
 function findByText(match){

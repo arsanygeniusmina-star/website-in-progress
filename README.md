@@ -59,3 +59,8 @@ WIP Brain keeps the website and the important conversation context available for
 - Internet access for the first model download.
 - Enough GPU memory for at least one compatible model.
 - Model assets are cached by the browser after download.
+
+
+### v3 builder engine
+
+The engine now exports functional input and textarea controls, supports duplication and z-order operations, stores site metadata, and validates page navigation references and semantic section organization.

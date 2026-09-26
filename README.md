@@ -64,3 +64,8 @@ WIP Brain keeps the website and the important conversation context available for
 ### v3 builder engine
 
 The engine now exports functional input and textarea controls, supports duplication and z-order operations, stores site metadata, and validates page navigation references and semantic section organization.
+
+
+## v4 quality engine
+
+The project now carries image source/alt metadata and accessible labels, a reusable design-system state, adaptive model ranking, and stronger deterministic QA including overlap detection and accessibility checks before the AI repair pass.

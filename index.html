@@ -493,7 +493,7 @@ function executeAgentOps(ops){
       continue;
     }
     if(k==='source_file'){
-      const path=String(o.path||'').trim().replace(/^\\/+/,'' );
+
       const content=String(o.content||'');
       const cleanPath=String(o.path||'').trim().replaceAll('\\','/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/');
       const path=cleanPath;

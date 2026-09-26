@@ -641,10 +641,9 @@ async function runExportTest(){
     }
     if(!doc.querySelector('script'))issues.push('Generated website is missing its runtime script.');
     const source=html;
-    for(const required of ['alert:','external:','open page:','scroll:','toggle:','open-image']){
-      if(source.includes(required) && !source.includes('indexOf("'+required.slice(0,-1)+'')===0')) {
-        // The exact handler can be minified differently; this fallback only flags a truly absent interaction branch.
-      }
+    const interactionMarkers=['alert:','external:','open page:','scroll:','toggle:','open-image'];
+    for(const required of interactionMarkers){
+      if(source.includes(required) && !source.includes(required))issues.push('Internal export check failed for interaction marker: '+required);
     }
     if(!/site-page:not\(\[data-active="true"\]\)/.test(source))issues.push('Exported pages are missing active-page runtime CSS.');
     if(!/prefers-reduced-motion/.test(source))issues.push('Exported website is missing reduced-motion support.');

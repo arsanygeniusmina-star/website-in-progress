@@ -141,7 +141,7 @@ make('text','Tell the builder what you want. It can create pages, sections, card
 make('button','Start building',95,395,190,56,16,'#111','#fff'),
 make('card','Responsive\nReal components\nWorking interactions',690,350,300,190,18,'#f4f4f1','#111')
 ]});
-let state={pages:[starter()],page:0,selected:null,site:{name:'Untitled Website',description:'',font:'Inter',accent:'#111',designSystem:{font:'Inter',background:'#fff',foreground:'#111',muted:'#666',accent:'#111',radius:12,spacing:24}},conversation:[],projectMemory:{facts:[],decisions:[],preferences:[],constraints:[]},engineering:{customCss:'',customJs:''},agent:{ready:false,runs:0}};
+let state={pages:[starter()],page:0,selected:null,site:{name:'Untitled Website',description:'',font:'Inter',accent:'#111',designSystem:{font:'Inter',background:'#fff',foreground:'#111',muted:'#666',accent:'#111',radius:12,spacing:24}},conversation:[],projectMemory:{facts:[],decisions:[],preferences:[],constraints:[]},engineering:{customCss:'',customJs:'',files:{}},agent:{ready:false,runs:0}};
 try{const x=JSON.parse(localStorage.getItem('wip-pro'));if(x?.pages)state={...state,...x,site:{...state.site,...(x.site||{})},conversation:x.conversation||[],projectMemory:x.projectMemory||{facts:[],decisions:[],preferences:[],constraints:[]},agent:x.agent||{ready:false,runs:0}}}catch{}
 const $=id=>document.getElementById(id),cur=()=>state.pages[state.page],sel=()=>cur().elements.find(e=>e.id===state.selected);
 function save(){localStorage.setItem('wip-pro',JSON.stringify(state));$('projectStatus').textContent='Autosaved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
@@ -219,7 +219,7 @@ function conversationContext(){
 function compactState(){
   return {
     site:state.site,
-    engineering:{customCssChars:String(state.engineering?.customCss||'').length,customJsChars:String(state.engineering?.customJs||'').length,hasCustomCss:!!String(state.engineering?.customCss||'').trim(),hasCustomJs:!!String(state.engineering?.customJs||'').trim()},
+    engineering:{customCssChars:String(state.engineering?.customCss||'').length,customJsChars:String(state.engineering?.customJs||'').length,fileOverrides:Object.keys(state.engineering?.files||{}),hasCustomCss:!!String(state.engineering?.customCss||'').trim(),hasCustomJs:!!String(state.engineering?.customJs||'').trim()},
     memory:state.projectMemory||{},
     currentPage:cur().name,
     currentPageIndex:state.page,
@@ -310,6 +310,8 @@ site_meta {"name":"...","description":"..."}
 design_system {"font":"...","background":"#...","foreground":"#...","muted":"#...","accent":"#...","radius":0,"spacing":0}
 source_css {"css":"..."}
 source_js {"js":"..."}
+source_file {"path":"relative/project/file","content":"complete file contents"}
+source_patch {"path":"relative/project/file","find":"exact existing text","replace":"replacement text"}
 
 BUILD RULES:
 - Think in outcomes, not keywords.
@@ -328,6 +330,7 @@ BUILD RULES:
 - Set site_meta on substantial new projects so exported pages get a useful title and description.
 - Use source_css/source_js only when the requested behavior cannot be represented cleanly by the visual primitives or interaction actions.
 - Keep source extensions focused and self-contained. Never include <script> tags inside source_js.
+- Use source_file for a complete generated-project file only when a file must be intentionally replaced. Use source_patch for a precise edit to an existing generated file; the find text must match exactly.
 - Never output code, markdown fences, chain-of-thought, or extra schema keys.`;
 
 function updateProjectMemory(mem){
@@ -359,11 +362,12 @@ async function browserAgent(userText){
     executeAgentOps(result?.operations||[]);
     await selfCheckAndRepair(userText);
     const finalIssues=validateSite();
-    if(finalIssues.length>beforeIssues.length){
+    const generatedIssues=validateGeneratedNextProject(buildNextProjectFiles());
+    if(finalIssues.length>beforeIssues.length || generatedIssues.length){
       const snapshot=JSON.parse(transactionSnapshot);
       state=snapshot.state;history=snapshot.history;future=snapshot.future;logs=snapshot.logs;
       state.agent=state.agent||{};
-      state.agent.lastRollback={reason:'QA score worsened after build',rolledBackAt:new Date().toISOString(),before:beforeIssues.length,after:finalIssues.length};
+      state.agent.lastRollback={reason:generatedIssues.length?'Generated source validation failed':'QA score worsened after build',rolledBackAt:new Date().toISOString(),before:beforeIssues.length,after:finalIssues.length,generatedIssues:generatedIssues.slice(0,12)};
       save();
       render();
       log('AI transaction rolled back · build quality worsened');
@@ -486,6 +490,24 @@ function executeAgentOps(ops){
     if(k==='source_js'){
       const js=String(o.js||'').replaceAll('<'+'/script>','<\\/script>').trim();
       if(js){state.engineering=state.engineering||{};state.engineering.customJs=((state.engineering.customJs||'')+'\\n// WIP source extension\\n'+js).slice(-24000);}
+      continue;
+    }
+    if(k==='source_file'){
+      const path=String(o.path||'').trim().replace(/^\\/+/,'' );
+      const content=String(o.content||'');
+      const safe=/^(app|components|lib|scripts|public)\\/[A-Za-z0-9._/\\-]+\\.(?:tsx?|css|mjs|json|md)$/.test(path)||/^README\\.md$/.test(path)||/^package\\.json$/.test(path)||/^tsconfig\\.json$/.test(path)||/^next-env\\.d\\.ts$/.test(path);
+      if(safe&&content){state.engineering=state.engineering||{};state.engineering.files={...(state.engineering.files||{}),[path]:content.slice(0,60000)};}
+      continue;
+    }
+    if(k==='source_patch'){
+      const path=String(o.path||'').trim().replace(/^\\/+/,'' );
+      const find=String(o.find??'');
+      const replacement=String(o.replace??'');
+      const files=state.engineering?.files||{};
+      const base=files[path] ?? buildNextProjectFiles()[path];
+      if(path&&find&&base.includes(find)){
+        state.engineering=state.engineering||{};state.engineering.files={...files,[path]:base.replace(find,replacement).slice(0,60000)};
+      }
       continue;
     }
   }
@@ -723,6 +745,8 @@ function buildNextProjectFiles(){
   files['tsconfig.json']=JSON.stringify({compilerOptions:{target:'ES2017',lib:['dom','dom.iterable','esnext'],allowJs:false,skipLibCheck:true,strict:true,noEmit:true,esModuleInterop:true,module:'esnext',moduleResolution:'bundler',resolveJsonModule:true,isolatedModules:true,jsx:'preserve',incremental:true,plugins:[{name:'next'}]},include:['next-env.d.ts','**/*.ts','**/*.tsx','.next/types/**/*.ts'],exclude:['node_modules']},null,2);
   files['README.md']='# '+data.name+'\\n\\nGenerated by Website in Progress / WIP Brain.\\n\\nRun npm install, then npm run dev.\\n\\nSupported interactions: alert, external links, open page, scroll, toggle, and open-image. Responsive overrides and reduced-motion support are included when defined in the project.\\n\\nRun npm test to validate the generated source contract before building for production.\\n';
   files['scripts/validate-generated.mjs']="import fs from 'node:fs';\nimport process from 'node:process';\n\nconst required=[\n  'package.json',\n  'app/layout.tsx',\n  'app/page.tsx',\n  'app/[slug]/page.tsx',\n  'components/site-renderer.tsx',\n  'lib/site-data.ts',\n  'lib/site-types.ts',\n  'app/globals.css',\n  'next-env.d.ts',\n  'tsconfig.json',\n  'README.md'\n];\n\nconst missing=required.filter((file)=>!fs.existsSync(file));\nconst checks=[\n  ['root route',fs.readFileSync('app/page.tsx','utf8').includes(\"site.pages[0].slug\")],\n  ['dynamic routes',fs.readFileSync('app/[slug]/page.tsx','utf8').includes('generateStaticParams')],\n  ['renderer',fs.readFileSync('components/site-renderer.tsx','utf8').includes('handleAction')],\n  ['responsive variables',fs.readFileSync('components/site-renderer.tsx','utf8').includes('--mx')],\n  ['reduced motion',fs.readFileSync('app/globals.css','utf8').includes('prefers-reduced-motion')],\n  ['site contract',fs.readFileSync('lib/site-types.ts','utf8').includes('SiteProject')]\n];\nconst failures=[\n  ...missing.map((file)=>'missing file: '+file),\n  ...checks.filter(([,ok])=>!ok).map(([name])=>'failed check: '+name)\n];\nif(failures.length){\n  console.error('WIP generated-project validation failed');\n  failures.forEach((item)=>console.error(' - '+item));\n  process.exit(1);\n}\nconsole.log('WIP generated-project validation passed');\nconsole.log('Files:',required.length);\n";
+  const overrides=state.engineering?.files||{};
+  for(const [path,content] of Object.entries(overrides)){if(typeof content==='string')files[path]=content;}
   return files;
 }
 function validateGeneratedNextProject(files){
@@ -743,6 +767,7 @@ function validateGeneratedNextProject(files){
   if(!/process\.exit\(1\)/.test(files['scripts/validate-generated.mjs']||''))issues.push('Generated validation script does not fail the process on invalid output.');
   if(!/CustomRuntime/.test(files['components/custom-runtime.tsx']||''))issues.push('Generated custom runtime component is missing.');
   if((state.engineering?.customJs||'').trim()&&!/CustomRuntime/.test(files['app/layout.tsx']||''))issues.push('Custom JavaScript is not wired into the generated layout.');
+  if(Object.keys(state.engineering?.files||{}).some(path=>!files[path]))issues.push('A source override points to an unknown generated file.');
 
   return issues;
 }
@@ -752,16 +777,22 @@ function showEngineering(){
   const pageCount=state.pages.length;
   const componentCount=state.pages.reduce((n,p)=>n+(p.elements||[]).length,0);
   const interactionCount=state.pages.reduce((n,p)=>n+(p.elements||[]).filter(e=>e.action).length,0);
+  const customCssChars=String(state.engineering?.customCss||'').length;
+  const customJsChars=String(state.engineering?.customJs||'').length;
+  const overrides=Object.keys(state.engineering?.files||{});
   const tests=[
     ['Editor state',validateSite().length===0],
-    ['Next.js source contract',generatedIssues.length===0],
-    ['Runtime smoke test','Available from Test button'],
+    ['Generated source contract',generatedIssues.length===0],
+    ['Runtime smoke test','Use Test'],
     ['Self-validation script',!!files['scripts/validate-generated.mjs']],
-    ['Responsive source variables',/--mx/.test(files['components/site-renderer.tsx']||'')],
-    ['Reduced-motion policy',/prefers-reduced-motion/.test(files['app/globals.css']||'')]
+    ['Source overrides',overrides.length?overrides.length+' file(s)':'Ready'],
+    ['Responsive variables',/--mx/.test(files['components/site-renderer.tsx']||'')],
+    ['Reduced motion',/prefers-reduced-motion/.test(files['app/globals.css']||'')]
   ];
-  const rows=tests.map(([name,ok])=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><strong>'+escapeHtml(name)+'</strong><span style="float:right">'+(ok===true?'PASS':ok===false?'FAIL':'READY')+'</span></div>').join('');
-  $('sourceOverlay').innerHTML='<div class="source-modal" onclick="event.stopPropagation()"><div class="source-head"><div><b>Engineering Report</b><span>Source contract + export architecture</span></div><div><button class="btn" onclick="runExportTest()">Run runtime test</button><button class="btn" onclick="closeSource()">Close</button></div></div><div class="source-body"><div class="source-code" style="white-space:normal"><h3 style="margin-top:0">Generated project</h3>'+rows+'<p><strong>'+Object.keys(files).length+'</strong> generated source files · <strong>'+pageCount+'</strong> pages · <strong>'+componentCount+'</strong> components · <strong>'+interactionCount+'</strong> interactions.</p></div><div class="source-side"><h4>Engineering contract</h4><p>Every generated Next.js project includes typed site data, its own validation script, responsive variables, reduced-motion support, route generation and interaction handling.</p><p><strong>Validation:</strong> '+(generatedIssues.length?generatedIssues.join('<br>'):'No source-contract issues detected.')+'</p></div></div></div>';
+  const rows=tests.map(([name,ok])=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><strong>'+escapeHtml(name)+'</strong><span style="float:right">'+(ok===true?'PASS':ok===false?'FAIL':escapeHtml(String(ok)))+'</span></div>').join('');
+  const paths=Object.keys(files);
+  const first=paths[0]||'README.md';
+  $('sourceOverlay').innerHTML='<div class="source-modal" onclick="event.stopPropagation()"><div class="source-head"><div><b>Engineering Workspace</b><span>'+paths.length+' generated files · source overrides are transactional</span></div><div><button class="btn" onclick="runExportTest()">Run runtime test</button><button class="btn" onclick="closeSource()">Close</button></div></div><div class="source-body"><div class="source-code" style="white-space:normal"><h3 style="margin-top:0">Project health</h3>'+rows+'<p><strong>'+pageCount+'</strong> pages · <strong>'+componentCount+'</strong> components · <strong>'+interactionCount+'</strong> interactions · <strong>'+customCssChars+'</strong> custom CSS chars · <strong>'+customJsChars+'</strong> custom JS chars.</p><h4>Source files</h4>'+paths.map(p=>(overrides.includes(p)?'◆ ':'')+escapeHtml(p)).join('<br>')+'</div><div class="source-side"><h4>Source contract</h4><p>WIP can now preserve complete file replacements and exact source patches alongside the visual project. Generated output is revalidated before an autonomous build is accepted.</p><p><strong>Validation:</strong> '+(generatedIssues.length?generatedIssues.join('<br>'):'No generated-source issues detected.')+'</p><p><strong>Override markers:</strong> ◆ indicates an intentionally customized generated file.</p></div></div></div>';
   $('sourceOverlay').classList.add('show');
 }
 async function showNextProject(){

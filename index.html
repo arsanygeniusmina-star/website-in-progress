@@ -493,19 +493,22 @@ function executeAgentOps(ops){
       continue;
     }
     if(k==='source_file'){
-
-      const content=String(o.content||'');
-      const cleanPath=String(o.path||'').trim().replaceAll('\\','/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/');
-      const path=cleanPath;
+      const rawPath=String(o.path||'').trim();
+      const path=rawPath.replaceAll('\\','/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/');
       const content=String(o.content||'');
       const allowedRoot=['app/','components/','lib/','scripts/','public/'].some(root=>path.startsWith(root));
       const allowedExt=/\.(tsx?|css|mjs|json|md)$/.test(path);
-      const safe=allowedRoot&&allowedExt&&!path.includes('..');
+      const safe=allowedRoot&&allowedExt&&!path.includes('..')||['README.md','package.json','tsconfig.json','next-env.d.ts'].includes(path);
+      if(safe&&content){state.engineering=state.engineering||{};state.engineering.files={...(state.engineering.files||{}),[path]:content.slice(0,60000)};}
+      continue;
+    }
+    if(k==='source_patch'){
+      const path=String(o.path||'').trim().replaceAll('\\','/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/');
       const find=String(o.find??'');
       const replacement=String(o.replace??'');
       const files=state.engineering?.files||{};
       const base=files[path] ?? buildNextProjectFiles()[path];
-      if(path&&find&&base.includes(find)){
+      if(path&&find&&typeof base==='string'&&base.includes(find)){
         state.engineering=state.engineering||{};state.engineering.files={...files,[path]:base.replace(find,replacement).slice(0,60000)};
       }
       continue;

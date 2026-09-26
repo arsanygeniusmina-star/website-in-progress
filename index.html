@@ -287,6 +287,9 @@ theme {"theme":"dark|light|red|blue|luxury|minimal"}
 add {"kind":"nav|heading|text|button|card|image|circle|divider","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"#hex or transparent","color":"#hex","radius":0,"animation":"none|float|pulse|spin","action":"intent"}
 update {"match":"existing text or kind","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"...","color":"...","radius":0,"animation":"...","action":"..."}
 delete {"match":"existing text or kind"}
+duplicate {"match":"existing text or kind","x":0,"y":0}
+reorder {"match":"existing text or kind","z":1}
+site_meta {"name":"...","description":"..."}
 
 BUILD RULES:
 - Think in outcomes, not keywords.
@@ -299,7 +302,10 @@ BUILD RULES:
 - Use realistic copy.
 - Keep all geometry inside the 1200x760 editor canvas.
 - Use consistent spacing, alignment and typography.
-- Actions may be "alert:message", "scroll:element-text", "open page:PageName", or "open-image".
+- Actions may be "alert:message", "scroll:element-text", "open page:PageName", "toggle:element-text", "open-image", or "external:https://example.com".
+- Use duplicate when the user asks to clone/copy an existing component, and reorder when the user asks to bring something forward/back.
+- For forms, create input and textarea elements plus a submit button with an alert or scroll action.
+- Set site_meta on substantial new projects so exported pages get a useful title and description.
 - Never output code, markdown fences, chain-of-thought, or extra schema keys.`;
 
 function updateProjectMemory(mem){
@@ -399,6 +405,20 @@ function executeAgentOps(ops){
     if(k==='delete'){
       const target=findByText(o.match); if(target){state.pages[target._page].elements=state.pages[target._page].elements.filter(x=>x.id!==target.id);state.selected=null}
     }
+    if(k==='duplicate'){
+      const target=findByText(o.match); if(target){
+        const source=state.pages[target._page].elements.find(x=>x.id===target.id); const copy=JSON.parse(JSON.stringify(source));
+        copy.id=crypto.randomUUID();copy.x=Math.max(15,Math.min(1120,Number(o.x??(copy.x+30))));copy.y=Math.max(10,Math.min(700,copy.y+25));state.pages[target._page].elements.push(copy);state.page=target._page;state.selected=copy.id;
+      }
+    }
+    if(k==='reorder'){
+      const target=findByText(o.match); if(target){const real=state.pages[target._page].elements.find(x=>x.id===target.id);if(real)real.z=Number(o.z)||1;}
+    }
+    if(k==='site_meta'){
+      state.site.name=String(o.name||state.site.name||'Untitled Website');
+      state.site.description=String(o.description||state.site.description||'');
+      document.title=state.site.name+' — AI Website Builder';
+    }
   }
   render();
   log('AI built '+ops.length+' operation'+(ops.length===1?'':'s'));
@@ -417,6 +437,16 @@ function validateSite(){
       if(String(e.text||'').trim().length>260)issues.push('Element '+e.text.slice(0,40)+' has excessive copy.');
     }
     if(p.elements.length>4 && !p.elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');
+    const names=new Set();
+    for(const e of p.elements){
+      if(e.section)names.add(String(e.section));
+      if(e.action&&/open page:/i.test(e.action)){
+        const n=String(e.action).slice(String(e.action).toLowerCase().indexOf('open page:')+10).trim().toLowerCase();
+        if(n&&!state.pages.some(q=>String(q.name).toLowerCase()===n))issues.push('Interaction points to missing page '+n+'.');
+      }
+    }
+    if(p.elements.length>8 && names.size<2)issues.push('Page '+p.name+' lacks semantic section organization.');
+
     if(p.elements.length>5 && !p.elements.some(e=>e.kind==='heading'))issues.push('Page '+p.name+' has no heading.');
   }
   return [...new Set(issues)].slice(0,18);
@@ -491,7 +521,7 @@ function buildExportHtml(){
       const action=e.action?String(e.action).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'):'';
       const m=e.mobile||{};
       const mobile=(m.x!=null?'--mx:'+m.x+'px;':'')+(m.y!=null?'--my:'+m.y+'px;':'')+(m.w!=null?'--mw:'+m.w+'px;':'')+(m.h!=null?'--mh:'+m.h+'px;':'')+(m.size!=null?'--ms:'+m.size+'px;':'');
-      return '<div class="e '+e.kind+'" data-action="'+action+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+mobile+'">'+escapeHtml(e.text)+'</div>';
+      const tag=e.kind==='input'?'input':e.kind==='textarea'?'textarea':'div';const content=e.kind==='input'?'':e.kind==='textarea'?'':escapeHtml(e.text);const placeholder=(e.kind==='input'||e.kind==='textarea')?' placeholder="'+escapeHtml(e.text)+'"':'';return '<'+tag+' class="e '+e.kind+'" data-action="'+action+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+mobile+'"'+placeholder+'>'+content+'</'+tag+'>';
     }).join('');
     return '<section class="site-page" data-index="'+i+'" style="background:'+p.bg+'">'+els+'</section>';
   }).join('');

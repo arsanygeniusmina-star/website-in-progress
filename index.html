@@ -414,7 +414,7 @@ function executeAction(action){
   if(a==='open-image'){toast('Image interaction triggered');return}
   if(a.indexOf('external:')===0){
     const url=a.slice(9).trim();
-    if(/^https?:\\/\\//i.test(url))window.open(url,'_blank','noopener');
+    if(/^https?:\/\//i.test(url))window.open(url,'_blank','noopener');
   }
 }
 function executeAgentOps(ops){
@@ -492,7 +492,7 @@ function validateSite(){
       if(e.w<=4||e.h<=0)issues.push('Element '+e.text+' is effectively invisible.');
       if(e.x<15||e.y<10||e.x+e.w>1185||e.y+e.h>755)issues.push('Element '+e.text+' is outside the editor canvas.');
       if(String(e.text||'').trim().length>260)issues.push('Element '+e.text.slice(0,40)+' has excessive copy.');
-      if(e.kind==='image' && e.src && !/^https?:\\/\\//i.test(e.src))issues.push('Image '+(e.text||'image')+' has a non-http asset URL.');
+      if(e.kind==='image' && e.src && !/^https?:\/\//i.test(e.src))issues.push('Image '+(e.text||'image')+' has a non-http asset URL.');
       if((e.kind==='button'||e.kind==='input'||e.kind==='textarea')&&!String(e.aria||e.text||'').trim())issues.push(e.kind+' has no accessible label.');
     }
     if(elements.length>4&&!elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');

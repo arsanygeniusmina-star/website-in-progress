@@ -463,11 +463,57 @@ function executeAction(action){
     if(/^https?:\/\//i.test(url))window.open(url,'_blank','noopener');
   }
 }
+function normalizeAgentOps(ops){
+  const allowedKinds=new Set(['nav','heading','text','button','card','image','badge','stat','input','textarea','footer','circle','divider']);
+  const allowedOps=new Set(['clear_page','create_site','add_page','rename_page','background','theme','add','update','delete','duplicate','reorder','runtime_state','site_meta','design_system','source_css','source_js','source_file','source_patch']);
+  const safe=[],list=Array.isArray(ops)?ops:[],seen=new Set();
+  for(const raw of list){
+    if(!raw||typeof raw!=='object')continue;
+    const op=String(raw.op||raw.action||'').trim();
+    if(!allowedOps.has(op))continue;
+    const o={...raw,op};
+    if(['delete','duplicate','reorder'].includes(op)){o.match=String(o.match??'').slice(0,260);if(!o.match)continue;}
+    if(op==='add'){
+      o.kind=allowedKinds.has(String(o.kind))?String(o.kind):'text';
+      o.text=String(o.text??'').slice(0,260);
+      o.x=Math.max(15,Math.min(1120,Number(o.x??60)||60)); o.y=Math.max(10,Math.min(700,Number(o.y??80)||80));
+      o.w=Math.max(20,Math.min(1120,Number(o.w??320)||320)); o.h=Math.max(2,Math.min(700,Number(o.h??100)||100));
+      o.size=Math.max(8,Math.min(160,Number(o.size??18)||18)); o.radius=Math.max(0,Math.min(999,Number(o.radius??12)||12)); o.z=Math.max(1,Math.min(999,Number(o.z??1)||1));
+      if(o.action!=null)o.action=String(o.action).slice(0,800);
+      for(const key of ['bg','color','animation','section','src','alt','aria'])if(o[key]!=null)o[key]=String(o[key]).slice(0,1600);
+      if(o.mobile&&typeof o.mobile==='object')o.mobile={...o.mobile,x:o.mobile.x==null?null:Math.max(0,Math.min(360,Number(o.mobile.x)||0)),y:o.mobile.y==null?null:Math.max(0,Math.min(824,Number(o.mobile.y)||0)),w:o.mobile.w==null?null:Math.max(20,Math.min(360,Number(o.mobile.w)||20)),h:o.mobile.h==null?null:Math.max(1,Math.min(820,Number(o.mobile.h)||1)),size:o.mobile.size==null?null:Math.max(8,Math.min(80,Number(o.mobile.size)||18))};
+    }
+    if(op==='update'){
+      if(!o.match)continue;
+      o.match=String(o.match).slice(0,260);
+      for(const key of ['x','y','w','h','size','radius','z'])if(o[key]!=null)o[key]=Number(o[key]);
+      if(o.x!=null)o.x=Math.max(15,Math.min(1120,o.x)); if(o.y!=null)o.y=Math.max(10,Math.min(700,o.y));
+      if(o.w!=null)o.w=Math.max(20,Math.min(1120,o.w)); if(o.h!=null)o.h=Math.max(2,Math.min(700,o.h));
+      if(o.size!=null)o.size=Math.max(8,Math.min(160,o.size)); if(o.radius!=null)o.radius=Math.max(0,Math.min(999,o.radius));
+      if(o.text!=null)o.text=String(o.text).slice(0,260); if(o.action!=null)o.action=String(o.action).slice(0,800);
+      for(const key of ['bg','color','animation','section','src','alt','aria'])if(o[key]!=null)o[key]=String(o[key]).slice(0,1600);
+    }
+    if(op==='add_page'||op==='rename_page'){o.name=String(o.name??'').trim().slice(0,80);if(!o.name)continue;}
+    if(op==='runtime_state'){o.key=String(o.key??'').trim().slice(0,80);if(!o.key)continue;if(typeof o.value==='string')o.value=o.value.slice(0,500);}
+    if(op==='background')o.color=String(o.color??'').slice(0,40);
+    if(op==='theme')o.theme=String(o.theme??'').slice(0,40);
+    if(op==='site_meta'){o.name=String(o.name??'').slice(0,120);o.description=String(o.description??'').slice(0,500);}
+    if(op==='design_system'){for(const key of ['font','background','foreground','muted','accent'])if(o[key]!=null)o[key]=String(o[key]).slice(0,120);for(const key of ['radius','spacing'])if(o[key]!=null)o[key]=Math.max(0,Math.min(200,Number(o[key])||0));}
+    if(op==='source_css')o.css=String(o.css??'').slice(0,24000);
+    if(op==='source_js')o.js=String(o.js??'').slice(0,24000);
+    if(op==='source_file'){o.path=String(o.path??'').slice(0,180);o.content=String(o.content??'').slice(0,60000);if(!o.path||!o.content)continue;}
+    if(op==='source_patch'){o.path=String(o.path??'').slice(0,180);o.find=String(o.find??'').slice(0,12000);o.replace=String(o.replace??'').slice(0,24000);if(!o.path||!o.find)continue;}
+    if(op==='clear_page'||op==='create_site')seen.add(op);
+    safe.push(o);
+  }
+  return safe.slice(0,40);
+}
 function executeAgentOps(ops){
-  if(!Array.isArray(ops)||!ops.length)return;
-  checkpoint();
+  const safeOps=normalizeAgentOps(ops);
+  if(!safeOps.length)return;
+  checkpoint('AI build · preflight '+safeOps.length+' operations');
   const allowed=['nav','heading','text','button','card','image','badge','stat','input','textarea','footer','circle','divider'];
-  for(const o of ops){
+  for(const o of safeOps){
     const k=o?.op||o?.action;
     if(k==='clear_page'){cur().elements=[];state.selected=null;continue}
     if(k==='create_site'){generateSite(String(o.type||'landing'));continue}
@@ -559,7 +605,9 @@ function executeAgentOps(ops){
     }
   }
   render();
-  log('AI built '+ops.length+' operation'+(ops.length===1?'':'s'));
+  state.agent=state.agent||{};
+  state.agent.lastBuildReport={operations:safeOps.length,completedAt:new Date().toISOString(),plan:Array.isArray(state.agent.plan)?state.agent.plan.slice():[]};
+  log('AI built '+safeOps.length+' validated operation'+(safeOps.length===1?'':'s'));
 }
 function validateSite(){
   const issues=[],ids=new Set(),names=new Set();
@@ -898,53 +946,3 @@ async function downloadNextProject(){
   try{
     if(!window.JSZip){await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)})}
     const zip=new JSZip();
-    Object.entries(files).forEach(([path,content])=>zip.file(path,content));
-    const blob=await zip.generateAsync({type:'blob'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(state.site?.name||'wip-site').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.nextjs.zip';a.click();toast('Next.js project ZIP created');
-  }catch(e){console.error(e);toast('ZIP creation failed — use Source > Download instead')}
-}
-function projectMenu(){if(confirm('Export this project file? Press Cancel to import a .wip.json project.')){exportProject()}else importProject()}
-function importProject(){
-  $('projectFile').click();
-}
-$('projectFile').addEventListener('change',e=>{
-  const file=e.target.files?.[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=()=>{try{const incoming=JSON.parse(reader.result);if(!incoming?.pages||!Array.isArray(incoming.pages))throw new Error('Invalid WIP project file');checkpoint();state={...state,...incoming,page:Math.max(0,Math.min(incoming.pages.length-1,incoming.page||0)),selected:null};render();log('Imported project');}catch(err){toast(err.message||'Import failed')}};
-  reader.readAsText(file);
-});
-function exportSite(){const html=buildExportHtml();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.html';a.click();toast('Working website exported')}
-function toggleSpeech(){voiceOn=!voiceOn;$('speakBtn').textContent=voiceOn?'🔊 Voice replies: ON':'🔇 Voice replies: OFF';if(!voiceOn)speechSynthesis.cancel()}
-function toggleVoice(){const C=window.SpeechRecognition||window.webkitSpeechRecognition;if(!C){toast('Speech recognition is not supported in this browser');return}if(listening){recognition.stop();return}recognition=new C();recognition.lang='en-US';recognition.continuous=true;recognition.interimResults=false;recognition.onstart=()=>{listening=true;$('mic').classList.add('live');$('mic').textContent='⏹ Stop voice chat'};recognition.onresult=e=>{const t=e.results[e.results.length-1][0].transcript;sendText(t)};recognition.onerror=()=>toast('Voice recognition had a problem — try again');recognition.onend=()=>{listening=false;$('mic').classList.remove('live');$('mic').textContent='🎙 Start voice chat'};recognition.start()}
-$('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}})
-$('canvas').addEventListener('click',clearSelection);
-let dragState=null,resizeState=null;
-function startDrag(ev){
-  const id=ev.currentTarget.dataset.id;
-  if(!id)return;
-  const e=cur().elements.find(x=>x.id===id);
-  if(!e)return;
-  state.selected=id;
-  checkpoint();
-  dragState={id,startX:ev.clientX,startY:ev.clientY,origX:e.x,origY:e.y};
-  ev.currentTarget.setPointerCapture?.(ev.pointerId);
-  ev.preventDefault();
-}
-function moveDrag(ev){
-  if(!dragState)return;
-  const e=cur().elements.find(x=>x.id===dragState.id);
-  if(!e)return;
-  e.x=Math.max(15,Math.min(1135-e.w,dragState.origX+(ev.clientX-dragState.startX)));
-  e.y=Math.max(10,Math.min(745-e.h,dragState.origY+(ev.clientY-dragState.startY)));
-  const el=ev.currentTarget;
-  el.style.left=e.x+'px';el.style.top=e.y+'px';
-  const ins=$('inspector'); if(ins&&sel()?.id===e.id){const x=$('x');const y=$('y');if(x)x.value=e.x;if(y)y.value=e.y}
-}
-function endDrag(){if(dragState){log('Moved element');render();}dragState=null}
-function startResize(ev){
-  ev.stopPropagation();
-  const id=ev.currentTarget.dataset.resizeId,e=cur().elements.find(x=>x.id===id);
-  if(!e)return;
-  const mobile=state.editor?.device==='mobile',m=e.mobile||{};
-  checkpoint('Before resizing '+(e.text||e.kind));
-  resizeState={id,startX:ev.clientX,startY:ev.clientY,baseW:mobile?(m.w??e.w):e.w,baseH:mobile?(m.h??e.h):e.h,mobile};

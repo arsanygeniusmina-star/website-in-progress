@@ -253,6 +253,9 @@ function conversationContext(){
 function compactState(){
   return {
     site:state.site,
+    runtime:state.runtime||{vars:{}},
+    editor:state.editor||{device:'desktop',snap:true,grid:true},
+    versions:(state.versions||[]).map(v=>({label:v.label,time:v.time})),
     engineering:{customCssChars:String(state.engineering?.customCss||'').length,customJsChars:String(state.engineering?.customJs||'').length,fileOverrides:Object.keys(state.engineering?.files||{}),hasCustomCss:!!String(state.engineering?.customCss||'').trim(),hasCustomJs:!!String(state.engineering?.customJs||'').trim()},
     memory:state.projectMemory||{},
     currentPage:cur().name,
@@ -340,6 +343,7 @@ update {"match":"existing text or kind","text":"...","x":0,"y":0,"w":0,"h":0,"si
 delete {"match":"existing text or kind"}
 duplicate {"match":"existing text or kind","x":0,"y":0}
 reorder {"match":"existing text or kind","z":1}
+runtime_state {"key":"counter","value":"0"}
 site_meta {"name":"...","description":"..."}
 design_system {"font":"...","background":"#...","foreground":"#...","muted":"#...","accent":"#...","radius":0,"spacing":0}
 source_css {"css":"..."}
@@ -358,12 +362,13 @@ BUILD RULES:
 - Use realistic copy.
 - Keep all geometry inside the 1200x760 editor canvas.
 - Use consistent spacing, alignment and typography.
-- Actions may be "alert:message", "scroll:element-text", "open page:PageName", "toggle:element-text", "open-image", or "external:https://example.com".
+- Actions may be "alert:message", "scroll:element-text", "open page:PageName", "toggle:element-text", "open-image", "external:https://example.com", "set:key=value", "increment:key=1", "decrement:key=1", or "toggle-var:key". Text may contain runtime bindings like {{counter}}.
 - Use duplicate when the user asks to clone/copy an existing component, and reorder when the user asks to bring something forward/back.
 - For forms, create input and textarea elements plus a submit button with an alert or scroll action.
 - Set site_meta on substantial new projects so exported pages get a useful title and description.
 - Use source_css/source_js only when the requested behavior cannot be represented cleanly by the visual primitives or interaction actions.
 - Keep source extensions focused and self-contained. Never include <script> tags inside source_js.
+- Treat runtime state as first-class behavior. For counters, toggles, tabs, progress, or live values, initialize variables with runtime_state and connect them to visible bindings/interactions.
 - Use source_file for a complete generated-project file only when a file must be intentionally replaced. Use source_patch for a precise edit to an existing generated file; the find text must match exactly.
 - Never output code, markdown fences, chain-of-thought, or extra schema keys.`;
 
@@ -506,6 +511,11 @@ function executeAgentOps(ops){
     if(k==='reorder'){
       const target=findByText(o.match); if(target){const real=state.pages[target._page].elements.find(x=>x.id===target.id);if(real)real.z=Number(o.z)||1;}
     }
+    if(k==='runtime_state'){
+      state.runtime=state.runtime||{vars:{}};
+      state.runtime.vars=state.runtime.vars||{};
+      if(o.key!=null)state.runtime.vars[String(o.key)]=o.value??'';
+    }
     if(k==='site_meta'){
       state.site.name=String(o.name||state.site.name||'Untitled Website');
       state.site.description=String(o.description||state.site.description||'');
@@ -552,34 +562,53 @@ function executeAgentOps(ops){
   log('AI built '+ops.length+' operation'+(ops.length===1?'':'s'));
 }
 function validateSite(){
-  const issues=[];
-  const ids=new Set();
+  const issues=[],ids=new Set(),names=new Set();
   for(const [pi,p] of state.pages.entries()){
-    if(!p.name||!String(p.name).trim())issues.push('Page '+pi+' has no name.');
+    const pn=String(p.name||'').trim();
+    if(!pn)issues.push('Page '+pi+' has no name.');
+    else if(names.has(pn.toLowerCase()))issues.push('Duplicate page name: '+pn+'.');
+    names.add(pn.toLowerCase());
     const elements=p.elements||[];
     for(const e of elements){
+      const label=e.text||e.kind;
       if(ids.has(e.id))issues.push('Duplicate element id found.');
       ids.add(e.id);
-      if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.w)||!Number.isFinite(e.h))issues.push('Element '+e.text+' has invalid geometry.');
-      if(e.w<=4||e.h<=0)issues.push('Element '+e.text+' is effectively invisible.');
-      if(e.x<15||e.y<10||e.x+e.w>1185||e.y+e.h>755)issues.push('Element '+e.text+' is outside the editor canvas.');
-      if(String(e.text||'').trim().length>260)issues.push('Element '+e.text.slice(0,40)+' has excessive copy.');
-      if(e.kind==='image' && e.src && !/^https?:\/\//i.test(e.src))issues.push('Image '+(e.text||'image')+' has a non-http asset URL.');
+      if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.w)||!Number.isFinite(e.h))issues.push('Element '+label+' has invalid geometry.');
+      if(e.w<=4||e.h<=0)issues.push('Element '+label+' is effectively invisible.');
+      if(e.x<15||e.y<10||e.x+e.w>1185||e.y+e.h>755)issues.push('Element '+label+' is outside the editor canvas.');
+      if(String(e.text||'').trim().length>260)issues.push('Element '+String(e.text||label).slice(0,40)+' has excessive copy.');
+      if(e.kind==='image'&&e.src&&!/^https?:\/\//i.test(e.src))issues.push('Image '+label+' has a non-http asset URL.');
       if((e.kind==='button'||e.kind==='input'||e.kind==='textarea')&&!String(e.aria||e.text||'').trim())issues.push(e.kind+' has no accessible label.');
-    }
-    if(elements.length>4&&!elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');
-    if(elements.length>5&&!elements.some(e=>e.kind==='heading'))issues.push('Page '+p.name+' has no heading.');
-    for(let i=0;i<elements.length;i++){
-      for(let j=i+1;j<elements.length;j++){
-        const a=elements[i],b=elements[j];
-        if(a.kind==='circle'||b.kind==='circle'||a.kind==='image'||b.kind==='image')continue;
-        const overlap=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
-        const minArea=Math.min(Math.max(1,a.w*a.h),Math.max(1,b.w*b.h));
-        if(overlap>80 && overlap/minArea>.28 && Math.abs((a.z||1)-(b.z||1))<2)issues.push('Potential collision between "'+(a.text||a.kind)+'" and "'+(b.text||b.kind)+'".');
+      const action=String(e.action||'').trim();
+      if(/^open page:/i.test(action)){
+        const target=action.slice(10).trim().toLowerCase();
+        if(target&&!state.pages.some(x=>String(x.name||'').trim().toLowerCase()===target))issues.push('Interaction points to missing page: '+target+'.');
       }
+      if(/^(set:|increment:|decrement:|toggle-var:)/i.test(action)){
+        const key=action.replace(/^(set:|increment:|decrement:|toggle-var:)/i,'').split('=')[0].trim();
+        if(!key)issues.push('Runtime interaction on '+label+' has no variable key.');
+      }
+      const bindings=[...String(e.text||'').matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)].map(m=>m[1].trim());
+      for(const key of bindings)if(!(key in (state.runtime?.vars||{})))issues.push('Binding {{'+key+'}} has no initialized runtime variable.');
+      const m=e.mobile||{};
+      if(m.w!=null&&(m.w<20||m.w>360))issues.push('Element '+label+' has an unsafe mobile width.');
+      if(m.h!=null&&(m.h<1||m.h>820))issues.push('Element '+label+' has an unsafe mobile height.');
+      if(m.x!=null&&(m.x<0||m.x>360))issues.push('Element '+label+' has an unsafe mobile X position.');
+      if(m.y!=null&&(m.y<0||m.y>824))issues.push('Element '+label+' has an unsafe mobile Y position.');
+    }
+    if(elements.length>4&&!elements.some(e=>e.kind==='nav'))issues.push('Page '+pn+' has no navigation.');
+    if(elements.length>5&&!elements.some(e=>e.kind==='heading'))issues.push('Page '+pn+' has no heading.');
+    for(let i=0;i<elements.length;i++)for(let j=i+1;j<elements.length;j++){
+      const a=elements[i],b=elements[j];
+      if(a.kind==='circle'||b.kind==='circle'||a.kind==='image'||b.kind==='image')continue;
+      const overlap=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+      const minArea=Math.min(Math.max(1,a.w*a.h),Math.max(1,b.w*b.h));
+      if(overlap>80&&overlap/minArea>.28&&Math.abs((a.z||1)-(b.z||1))<2)issues.push('Potential collision between "'+(a.text||a.kind)+'" and "'+(b.text||b.kind)+'".');
     }
   }
-  return [...new Set(issues)].slice(0,28);
+  const hasRuntimeActions=state.pages.some(p=>p.elements.some(e=>/^(set:|increment:|decrement:|toggle-var:)/i.test(String(e.action||''))));
+  if(hasRuntimeActions&&!Object.keys(state.runtime?.vars||{}).length)issues.push('Runtime interactions exist but no runtime variables are initialized.');
+  return [...new Set(issues)].slice(0,36);
 }
 async function selfCheckAndRepair(userText){
   let issues=validateSite();
@@ -724,10 +753,11 @@ async function runExportTest(){
     }
     if(!doc.querySelector('script'))issues.push('Generated website is missing its runtime script.');
     const source=html;
-    const interactionMarkers=['alert:','external:','open page:','scroll:','toggle:','open-image'];
-    for(const required of interactionMarkers){
-      if(source.includes(required) && !source.includes(required))issues.push('Internal export check failed for interaction marker: '+required);
-    }
+    const actionCount=state.pages.reduce((n,p)=>n+(p.elements||[]).filter(e=>String(e.action||'').trim()).length,0);
+    if(actionCount&&!source.includes('data-action='))issues.push('Interactive elements were not encoded into the export.');
+    if(source.includes('{{')&&!source.includes('data-template='))issues.push('Runtime bindings were not encoded into the export.');
+    if(actionCount&&!source.includes('addEventListener'))issues.push('Export runtime event wiring is missing.');
+    if(state.pages.some(p=>p.elements.some(e=>/^(set:|increment:|decrement:|toggle-var:)/.test(String(e.action||''))))&&!source.includes('handleRuntimeAction'))issues.push('Export runtime dispatcher is missing.');
     if(!/site-page:not\(\[data-active="true"\]\)/.test(source))issues.push('Exported pages are missing active-page runtime CSS.');
     if(!/prefers-reduced-motion/.test(source))issues.push('Exported website is missing reduced-motion support.');
     const generated=buildNextProjectFiles();
@@ -792,26 +822,47 @@ function buildNextProjectFiles(){
   return files;
 }
 function validateGeneratedNextProject(files){
-  const required=['package.json','app/layout.tsx','app/page.tsx','app/[slug]/page.tsx','components/site-renderer.tsx','lib/site-data.ts','lib/site-types.ts','scripts/validate-generated.mjs','app/globals.css','next-env.d.ts','tsconfig.json','README.md'];
-  const missing=required.filter(path=>!files[path]);
-  const issues=[];
+  const required=['package.json','app/layout.tsx','app/page.tsx','app/[slug]/page.tsx','components/site-renderer.tsx','lib/site-data.ts','lib/site-types.ts','components/custom-runtime.tsx','scripts/validate-generated.mjs','app/globals.css','next-env.d.ts','tsconfig.json','README.md'];
+  const missing=required.filter(path=>!files[path]),issues=[];
+  const renderer=files['components/site-renderer.tsx']||'',types=files['lib/site-types.ts']||'',script=files['scripts/validate-generated.mjs']||'';
   if(missing.length)issues.push('Missing generated file: '+missing.join(', '));
   if(!/generateStaticParams/.test(files['app/[slug]/page.tsx']||''))issues.push('Dynamic page route is missing generateStaticParams.');
   if(!/SiteRenderer/.test(files['app/[slug]/page.tsx']||''))issues.push('Dynamic page route is not connected to SiteRenderer.');
   if(!/site\.pages\[0\]\.slug/.test(files['app/page.tsx']||''))issues.push('Root route does not redirect to the actual first generated page.');
-  if(!/handleAction/.test(files['components/site-renderer.tsx']||''))issues.push('Next.js renderer is missing action handling.');
-  if(!/--mx/.test(files['components/site-renderer.tsx']||''))issues.push('Responsive mobile variables are missing from the renderer.');
+  if(!/handleAction/.test(renderer))issues.push('Next.js renderer is missing action handling.');
+  if(!/useState<Runtime>/.test(renderer)||!/initialRuntime/.test(renderer))issues.push('Next.js renderer is missing runtime state initialization.');
+  if(state.pages.some(p=>p.elements.some(e=>/^toggle-var:/.test(String(e.action||''))))&&!/toggle-var:/.test(renderer))issues.push('Next.js renderer cannot execute toggle-var interactions.');
+  if(state.pages.some(p=>p.elements.some(e=>/^(increment:|decrement:)/.test(String(e.action||''))))&&!/increment:|decrement:/.test(renderer))issues.push('Next.js renderer cannot execute counter interactions.');
+  if(!/--mx/.test(renderer))issues.push('Responsive mobile variables are missing from the renderer.');
   if(!/prefers-reduced-motion/.test(files['app/globals.css']||''))issues.push('Reduced-motion support is missing from generated CSS.');
-  if(!/objectFit:'cover'/.test(files['components/site-renderer.tsx']||''))issues.push('Next.js image rendering is missing object-fit coverage.');
-  if(!/aria-label/.test(files['components/site-renderer.tsx']||''))issues.push('Next.js renderer is missing accessible labels.');
-  if(!/SiteProject/.test(files['lib/site-types.ts']||''))issues.push('Generated site contract types are missing.');
+  if(!/objectFit:'cover'/.test(renderer))issues.push('Next.js image rendering is missing object-fit coverage.');
+  if(!/aria-label/.test(renderer))issues.push('Next.js renderer is missing accessible labels.');
+  if(!/SiteProject/.test(types)||!/SiteRuntime/.test(types))issues.push('Generated site/runtime contract types are missing.');
   if(!/validate-generated/.test(files['package.json']||''))issues.push('Generated project is missing its self-validation test command.');
-  if(!/process\.exit\(1\)/.test(files['scripts/validate-generated.mjs']||''))issues.push('Generated validation script does not fail the process on invalid output.');
+  if(!/process\.exit\(1\)/.test(script))issues.push('Generated validation script does not fail the process on invalid output.');
   if(!/CustomRuntime/.test(files['components/custom-runtime.tsx']||''))issues.push('Generated custom runtime component is missing.');
-  if((state.engineering?.customJs||'').trim()&&!/CustomRuntime/.test(files['app/layout.tsx']||''))issues.push('Custom JavaScript is not wired into the generated layout.');
+  if((state.engineering?.customJs||'').trim()&&!/useEffect/.test(files['components/custom-runtime.tsx']||''))issues.push('Custom JavaScript is not wired into the generated runtime.');
   if(Object.keys(state.engineering?.files||{}).some(path=>!files[path]))issues.push('A source override points to an unknown generated file.');
-
-  return issues;
+  return [...new Set(issues)];
+}
+function showVersions(){
+  const versions=Array.isArray(state.versions)?[...state.versions].reverse():[];
+  const rows=versions.length?versions.map((v,ri)=>{
+    const index=versions.length-1-ri;
+    return '<div style="padding:10px 0;border-bottom:1px solid #eee"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div><strong>'+escapeHtml(v.label||'Workspace version')+'</strong><div style="font-size:10px;color:#999;margin-top:3px">'+new Date(v.time).toLocaleString()+'</div></div><button class="btn" onclick="restoreVersion('+index+')">Restore</button></div></div>';
+  }).join(''):'<div class="empty">No saved versions yet.</div>';
+  $('sourceOverlay').innerHTML='<div class="modal" style="width:min(620px,92vw);max-height:82vh;overflow:auto" onclick="event.stopPropagation()"><h3>Workspace Versions</h3><p>WIP keeps the latest eight local snapshots. Restoring one creates a reversible checkpoint.</p>'+rows+'<div style="margin-top:12px;text-align:right"><button class="btn" onclick="closeSource()">Close</button></div></div>';
+  $('sourceOverlay').classList.add('show');
+}
+function restoreVersion(index){
+  const versions=Array.isArray(state.versions)?state.versions:[];
+  const target=versions[index];
+  if(!target?.state)return;
+  if(!confirm('Restore "'+(target.label||'workspace version')+'"? The current state stays available through Undo.'))return;
+  history.push(JSON.stringify(state));if(history.length>60)history.shift();future=[];
+  const keep=versions.slice();
+  state=JSON.parse(JSON.stringify(target.state));state.versions=keep;state.selected=null;
+  render();closeSource();log('Restored '+(target.label||'workspace version'));toast('Version restored');
 }
 function showEngineering(){
   const files=buildNextProjectFiles();

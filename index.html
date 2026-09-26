@@ -1015,3 +1015,18 @@ async function downloadNextProject(){
   try{
     if(!window.JSZip){await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)})}
     const zip=new JSZip();
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.nextjs.zip';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    toast('Next.js project downloaded');
+  }catch(e){
+    console.error(e);
+    toast('Could not create ZIP: '+(e?.message||e));
+  }
+}
+</script>
+</body>
+</html>

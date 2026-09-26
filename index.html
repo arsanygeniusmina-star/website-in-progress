@@ -11,7 +11,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 1
 .ai{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fafafa}.ai-head{display:flex;gap:9px;align-items:center}.ai-dot{width:9px;height:9px;background:#6b7cff;border-radius:50%;box-shadow:0 0 14px #6b7cff}.ai b{font-size:12px}.ai small{display:block;color:#999;margin-top:2px}.chat{height:290px;overflow:auto;margin-top:10px;border:1px solid #e4e4e0;border-radius:10px;background:#fff;padding:8px}.msg{max-width:92%;padding:8px 10px;border-radius:10px;margin:6px 0;font-size:11px;line-height:1.4}.msg.ai{background:#f1f2f4;border:0}.msg.user{background:#111;color:#fff;margin-left:auto}.msg.thinking{color:#999;font-style:italic;background:#fff}.prompt{display:flex;gap:6px;margin-top:8px}.prompt textarea{flex:1;border:1px solid #ddd;border-radius:8px;padding:9px 10px;outline:none;resize:none;min-height:42px;max-height:100px}.prompt button{border:0;background:#111;color:#fff;border-radius:8px;padding:0 13px}.voice-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.mic,.voice{border:1px solid #ddd;background:#fff;border-radius:8px;padding:8px}.mic.live{background:#111;color:#fff}.quick{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.quick button{border:1px solid #ddd;background:#fff;border-radius:999px;padding:6px 8px;font-size:10px}.mode{display:flex;gap:5px;margin-top:8px}.mode button{flex:1;border:1px solid #ddd;background:#fff;border-radius:7px;padding:6px;font-size:10px}.mode button.active{background:#111;color:#fff}.field{margin:9px 0}.field label{display:block;font-size:9px;color:#999;margin-bottom:4px}.field input,.field textarea,.field select{width:100%;border:1px solid #ddd;border-radius:7px;padding:8px;background:#fff}.two{display:grid;grid-template-columns:1fr 1fr;gap:6px}.log{font-size:10px;color:#888;border-top:1px solid var(--line);padding-top:7px}.log div{padding:6px 0;border-bottom:1px solid #f0f0ed}.empty{color:#aaa;font-size:11px;line-height:1.5}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:9px 13px;border-radius:999px;font-size:11px;display:none;z-index:200}.toast.show{display:block}.overlay{position:fixed;inset:0;background:#111d;display:none;align-items:center;justify-content:center;z-index:150}.overlay.show{display:flex}.preview-frame{width:min(1200px,94vw);height:min(800px,90vh);border:0;background:#fff;border-radius:14px}.modal{background:#fff;border-radius:14px;padding:18px;width:min(500px,92vw)}.modal h3{margin:0 0 7px}.modal p{font-size:12px;color:#666;line-height:1.5}.modal code{display:block;background:#f5f5f3;padding:10px;border-radius:8px;font-size:10px;overflow:auto}.status{font-size:9px;color:#999;margin-top:7px}@media(max-width:700px){.canvas{width:100%;min-width:360px;height:760px}.el{left:var(--mx,15px)!important;top:var(--my,auto)!important;width:var(--mw,calc(100% - 30px))!important;height:var(--mh,auto)!important;font-size:var(--ms,inherit)!important}.heading{font-size:var(--ms,clamp(34px,10vw,62px))!important}.canvas-area{min-height:700px}.right{display:block}.left{border:0;border-bottom:1px solid var(--line);display:flex;overflow:auto;gap:15px}.left .section{min-width:170px}.studio{display:flex;flex-direction:column}}
 @media(max-width:1100px) and (min-width:701px){.studio{grid-template-columns:190px 1fr}.right{grid-column:1/-1;border:0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:15px}.canvas-area{grid-column:2;grid-row:1}.left{grid-row:1/3}}</style></head>
 <body><div class="app">
-<header><div class="brand"><div class="logo">W</div><div><b>Website in Progress</b><span>CONVERSATIONAL AI WEBSITE BUILDER</span></div></div><div class="top-actions"><button class="btn" onclick="undo()">Undo</button><button class="btn" onclick="redo()">Redo</button><button class="btn" onclick="preview()">Preview</button><button class="btn dark" onclick="exportSite()">Export</button></div></header>
+<header><div class="brand"><div class="logo">W</div><div><b>Website in Progress</b><span>CONVERSATIONAL AI WEBSITE BUILDER</span></div></div><div class="top-actions"><button class="btn" onclick="undo()">Undo</button><button class="btn" onclick="redo()">Redo</button><button class="btn" onclick="preview()">Preview</button><button class="btn" onclick="showSource()">Source</button><button class="btn" onclick="projectMenu()">Project</button><button class="btn dark" onclick="exportSite()">Export</button></div></header>
 <div class="studio">
 <aside class="left">
 <div class="section"><div class="label">PROJECT</div><div class="project"><strong>Untitled Website</strong><small id="projectStatus">Autosaved locally</small></div></div>
@@ -31,7 +31,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 1
 <div class="section"><div class="label">INSPECTOR</div><div id="inspector" class="empty">Select an element on the canvas to edit it.</div></div>
 <div class="section"><div class="label">ACTIVITY</div><div id="log" class="log"></div></div>
 </aside></div></div>
-<div id="toast" class="toast"></div><div id="previewOverlay" class="overlay" onclick="closePreview()"></div>
+<div id="toast" class="toast"></div><div id="previewOverlay" class="overlay" onclick="closePreview()"></div><div id="sourceOverlay" class="overlay" onclick="closeSource()"></div><div id="projectInput" style="display:none"><input id="projectFile" type="file" accept=".json,application/json"></div>
 
 <script>
 window.WipBrainReady = (async () => {
@@ -513,61 +513,51 @@ function fit(){document.querySelector('.viewport').scrollTo({left:0,top:0,behavi
 function preview(){const html=buildExportHtml();const ov=$('previewOverlay');ov.innerHTML='<iframe class="preview-frame" sandbox="allow-scripts allow-forms" srcdoc="'+escapeAttr(html)+'"></iframe>';ov.classList.add('show')}
 function closePreview(ev){if(ev&&ev.target&&ev.target.id==='previewOverlay')$('previewOverlay').classList.remove('show')}
 function escapeAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
-function buildExportHtml(){
+function buildProjectSource(){
   const pages=state.pages||[];
   const pageMarkup=pages.map((p,i)=>{
     const els=(p.elements||[]).map(e=>{
       const pad=(e.kind==='button'||e.kind==='circle'||e.kind==='badge'?'0':'12px');
       const action=e.action?String(e.action).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'):'';
       const m=e.mobile||{};
-      const mobile=(m.x!=null?'--mx:'+m.x+'px;':'')+(m.y!=null?'--my:'+m.y+'px;':'')+(m.w!=null?'--mw:'+m.w+'px;':'')+(m.h!=null?'--mh:'+m.h+'px;':'')+(m.size!=null?'--ms:'+m.size+'px;':'');
-      const tag=e.kind==='input'?'input':e.kind==='textarea'?'textarea':'div';const content=e.kind==='input'?'':e.kind==='textarea'?'':escapeHtml(e.text);const placeholder=(e.kind==='input'||e.kind==='textarea')?' placeholder="'+escapeHtml(e.text)+'"':'';return '<'+tag+' class="e '+e.kind+'" data-action="'+action+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+mobile+'"'+placeholder+'>'+content+'</'+tag+'>';
+      const mobile=(m.x!=null?'--mx:'+m.x+'px;':'')+(m.y!=null?'--my:'+m.y+'px;')+(m.w!=null?'--mw:'+m.w+'px;')+(m.h!=null?'--mh:'+m.h+'px;')+(m.size!=null?'--ms:'+m.size+'px;':'');
+      const tag=e.kind==='input'?'input':e.kind==='textarea'?'textarea':'div';
+      const content=(tag==='input'||tag==='textarea')?'':escapeHtml(e.text);
+      const placeholder=(tag==='input'||tag==='textarea')?' placeholder="'+escapeHtml(e.text)+'"':'';
+      return '<'+tag+' class="e '+e.kind+'" data-action="'+action+'" data-section="'+escapeHtml(e.section||'content')+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+mobile+'"'+placeholder+'>'+content+'</'+tag+'>';
     }).join('');
-    return '<section class="site-page" data-index="'+i+'" style="background:'+p.bg+'">'+els+'</section>';
+    return '<section class="site-page" data-index="'+i+'" data-name="'+escapeAttr(p.name)+'" style="background:'+p.bg+'">'+els+'</section>';
   }).join('');
   const pageNames=pages.map((p,i)=>'<button type="button" data-page="'+i+'">'+escapeHtml(p.name)+'</button>').join('');
-  return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(state.site?.name||'Website')+'</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:'+((pages[0]&&pages[0].bg)||'#fff')+';font-family:Inter,system-ui,sans-serif}.site-shell{width:min(1200px,100%);margin:auto}.site-nav{position:sticky;top:0;z-index:999;display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;background:#fffc;backdrop-filter:blur(12px);border-bottom:1px solid #0001}.site-nav button{border:1px solid #0001;background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer}.site-page{position:relative;width:100%;min-height:900px;overflow:hidden}.e{position:absolute;display:flex;white-space:pre-wrap;overflow:hidden;align-items:flex-start;transition:transform .2s,box-shadow .2s}.e[data-action]{cursor:pointer}.e[data-action]:hover{transform:translateY(-3px);box-shadow:0 14px 32px #0002}.heading{font-weight:850;line-height:.98}.button{align-items:center;justify-content:center;font-weight:750}.card{border:1px solid #ddd;line-height:1.3}.nav{font-weight:700;align-items:center}.badge{align-items:center;justify-content:center;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.stat{display:flex;flex-direction:column;justify-content:center;font-weight:800;line-height:1.05}.circle{border-radius:50%}.image{align-items:center;justify-content:center}.input,.textarea{border:1px solid #d7d7d2;align-items:center;color:#777;background:#fff}.textarea{align-items:flex-start}.footer{align-items:center;border-top:1px solid #ddd;color:#777}.site-page:not([data-active="true"]){display:none}@media(max-width:700px){.site-page{min-height:100vh}.e{left:var(--mx,15px)!important;top:var(--my,auto)!important;width:var(--mw,calc(100% - 30px))!important;height:var(--mh,auto)!important;font-size:var(--ms,inherit)!important}.heading{font-size:var(--ms,clamp(34px,10vw,62px))!important}.card{position:relative!important;top:auto!important;margin:15px!important;width:calc(100% - 30px)!important}.input,.textarea,.footer{position:relative!important;left:15px!important;width:calc(100% - 30px)!important;top:auto!important}}</style></head><body><div class="site-shell"><nav class="site-nav">'+pageNames+'</nav>'+pageMarkup+'</div><script>
-(function(){
-  var pages=[...document.querySelectorAll(".site-page")];
-  function show(i){
-    i=Math.max(0,Math.min(pages.length-1,i));
-    pages.forEach(function(p,n){p.dataset.active=n===i?"true":"false";});
-    history.replaceState(null,"","#"+encodeURIComponent((pages[i]&&pages[i].dataset.index)||"0"));
-    window.scrollTo({top:0,behavior:"smooth"});
-  }
-  document.querySelectorAll("[data-page]").forEach(function(b){b.addEventListener("click",function(){show(Number(b.dataset.page));});});
-  document.querySelectorAll("[data-action]").forEach(function(el){
-    el.addEventListener("click",function(){
-      var a=el.getAttribute("data-action")||"";
-      if(a.indexOf("alert:")===0){alert(a.slice(6));return}
-      if(a.indexOf("external:")===0){var u=a.slice(9);if(/^https?:\\/\\//i.test(u))window.open(u,"_blank","noopener");return}
-      if(a.indexOf("open page:")===0){
-        var name=a.slice(10).trim().toLowerCase();
-        var target=pages.find(function(p){return (p.querySelector(".nav")?.textContent||"").toLowerCase().includes(name) || false;});
-        var buttons=[...document.querySelectorAll("[data-page]")];
-        var idx=buttons.findIndex(function(x){return (x.textContent||"").toLowerCase()===name;});
-        if(idx<0) idx=pages.findIndex(function(p){return false;});
-        if(idx>=0)show(idx);else alert("Page "+a.slice(10)+" was not found in the exported project.");
-        return;
-      }
-      if(a.indexOf("scroll:")===0){
-        var q=a.slice(7).trim().toLowerCase();
-        var t=[...pages.find(function(p){return p.dataset.active==="true";} ).querySelectorAll(".e")].find(function(x){return (x.textContent||"").toLowerCase().includes(q);});
-        if(t)t.scrollIntoView({behavior:"smooth",block:"center"});return;
-      }
-      if(a.indexOf("toggle:")===0){
-        var q=a.slice(7).trim().toLowerCase();
-        var p=pages.find(function(x){return x.dataset.active==="true";});
-        if(p){var t=[...p.querySelectorAll(".e")].find(function(x){return (x.textContent||"").toLowerCase().includes(q);});if(t)t.hidden=!t.hidden;}return;
-      }
-      if(a==="open-image"){window.open(el.textContent||"Image","_blank","noopener");}
-    });
-  });
-  var initial=decodeURIComponent(location.hash.slice(1)||"0");
-  show(Number.isFinite(Number(initial))?Number(initial):0);
-})();
-</script></body></html>';
-}function exportSite(){const html=buildExportHtml();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.html';a.click();toast('Working website exported')}
+  const title=escapeHtml(state.site?.name||'Website');
+  const description=escapeHtml(state.site?.description||'Built with WIP Brain');
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="'+description+'"><title>'+title+'</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:'+((pages[0]&&pages[0].bg)||'#fff')+';font-family:Inter,system-ui,sans-serif}.site-shell{width:min(1200px,100%);margin:auto}.site-nav{position:sticky;top:0;z-index:999;display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;background:#fffc;backdrop-filter:blur(12px);border-bottom:1px solid #0001}.site-nav button{border:1px solid #0001;background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer}.site-page{position:relative;width:100%;min-height:900px;overflow:hidden}.e{position:absolute;display:flex;white-space:pre-wrap;overflow:hidden;align-items:flex-start;transition:transform .2s,box-shadow .2s}.e[data-action]{cursor:pointer}.e[data-action]:hover{transform:translateY(-3px);box-shadow:0 14px 32px #0002}.heading{font-weight:850;line-height:.98}.button{align-items:center;justify-content:center;font-weight:750}.card{border:1px solid #ddd;line-height:1.3}.nav{font-weight:700;align-items:center}.badge{align-items:center;justify-content:center;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.stat{display:flex;flex-direction:column;justify-content:center;font-weight:800;line-height:1.05}.circle{border-radius:50%}.image{align-items:center;justify-content:center}.input,.textarea{border:1px solid #d7d7d2;align-items:center;color:#777;background:#fff}.textarea{align-items:flex-start}.footer{align-items:center;border-top:1px solid #ddd;color:#777}.site-page:not([data-active="true"]){display:none}@media(max-width:700px){.site-page{min-height:100vh}.e{left:var(--mx,15px)!important;top:var(--my,auto)!important;width:var(--mw,calc(100% - 30px))!important;height:var(--mh,auto)!important;font-size:var(--ms,inherit)!important}.heading{font-size:var(--ms,clamp(34px,10vw,62px))!important}.card{position:relative!important;top:auto!important;margin:15px!important;width:calc(100% - 30px)!important}.input,.textarea,.footer{position:relative!important;left:15px!important;width:calc(100% - 30px)!important;top:auto!important}}</style></head><body><div class="site-shell"><nav class="site-nav">'+pageNames+'</nav>'+pageMarkup+'</div><script>(function(){var pages=[...document.querySelectorAll(".site-page")];function show(i){i=Math.max(0,Math.min(pages.length-1,i));pages.forEach(function(p,n){p.dataset.active=n===i?"true":"false"});history.replaceState(null,"","#"+encodeURIComponent(pages[i]?.dataset.name||"0"));window.scrollTo({top:0,behavior:"smooth"})}document.querySelectorAll("[data-page]").forEach(function(b){b.addEventListener("click",function(){show(Number(b.dataset.page))})});document.querySelectorAll("[data-action]").forEach(function(el){el.addEventListener("click",function(){var a=el.getAttribute("data-action")||"";if(a.indexOf("alert:")===0){alert(a.slice(6));return}if(a.indexOf("external:")===0){var u=a.slice(9);if(/^https?:\\/\\//i.test(u))window.open(u,"_blank","noopener");return}if(a.indexOf("open page:")===0){var name=a.slice(10).trim().toLowerCase();var idx=[...document.querySelectorAll("[data-page]")].findIndex(function(x){return (x.textContent||"").trim().toLowerCase()===name});if(idx>=0)show(idx);return}if(a.indexOf("scroll:")===0){var q=a.slice(7).trim().toLowerCase();var p=pages.find(function(x){return x.dataset.active==="true"});var t=p&&[...p.querySelectorAll(".e")].find(function(x){return (x.textContent||"").toLowerCase().includes(q)});if(t)t.scrollIntoView({behavior:"smooth",block:"center"});return}if(a.indexOf("toggle:")===0){var q=a.slice(7).trim().toLowerCase();var p=pages.find(function(x){return x.dataset.active==="true"});var t=p&&[...p.querySelectorAll(".e")].find(function(x){return (x.textContent||"").toLowerCase().includes(q)});if(t)t.hidden=!t.hidden}})});show(0)})()</script></body></html>';
+}
+function buildExportHtml(){return buildProjectSource()}
+function showSource(){
+  const src=buildProjectSource();
+  $('sourceOverlay').innerHTML='<div class="source-modal" onclick="event.stopPropagation()"><div class="source-head"><div><b>Generated Website Source</b><span>HTML · CSS · JavaScript · compiled from the current project state</span></div><div><button class="btn" onclick="copySource()">Copy</button><button class="btn dark" onclick="downloadSource()">Download</button><button class="btn" onclick="closeSource()">Close</button></div></div><div class="source-body"><pre id="sourceCode" class="source-code"></pre><div class="source-side"><h4>Compiled project</h4><p>WIP Brain is now able to inspect the actual source artifact generated from the project state, not just the visual canvas.</p><p><strong>Pages:</strong> '+state.pages.length+'<br><strong>Components:</strong> '+state.pages.reduce((n,p)=>n+p.elements.length,0)+'<br><strong>Interactions:</strong> '+state.pages.reduce((n,p)=>n+p.elements.filter(e=>e.action).length,0)+'</p></div></div></div>';
+  $('sourceOverlay').classList.add('show');
+  $('sourceCode').textContent=src;
+}
+function closeSource(ev){if(ev&&ev.target&&ev.target.id==='sourceOverlay'){$('sourceOverlay').classList.remove('show');return}$('sourceOverlay').classList.remove('show')}
+function copySource(){navigator.clipboard?.writeText(buildProjectSource()).then(()=>toast('Source copied'))}
+function downloadSource(){const html=buildProjectSource();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.html';a.click();toast('Source downloaded')}
+function exportProject(){
+  const data=JSON.stringify(state,null,2);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.wip.json';a.click();toast('Project file exported');
+}
+function projectMenu(){if(confirm('Export this project file? Press Cancel to import a .wip.json project.')){exportProject()}else importProject()}
+function importProject(){
+  $('projectFile').click();
+}
+$('projectFile').addEventListener('change',e=>{
+  const file=e.target.files?.[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{try{const incoming=JSON.parse(reader.result);if(!incoming?.pages||!Array.isArray(incoming.pages))throw new Error('Invalid WIP project file');checkpoint();state={...state,...incoming,page:Math.max(0,Math.min(incoming.pages.length-1,incoming.page||0)),selected:null};render();log('Imported project');}catch(err){toast(err.message||'Import failed')}};
+  reader.readAsText(file);
+});
+function exportSite(){const html=buildExportHtml();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(state.site?.name||'website').replace(/\W+/g,'-').toLowerCase()+'.html';a.click();toast('Working website exported')}
 function toggleSpeech(){voiceOn=!voiceOn;$('speakBtn').textContent=voiceOn?'🔊 Voice replies: ON':'🔇 Voice replies: OFF';if(!voiceOn)speechSynthesis.cancel()}
 function toggleVoice(){const C=window.SpeechRecognition||window.webkitSpeechRecognition;if(!C){toast('Speech recognition is not supported in this browser');return}if(listening){recognition.stop();return}recognition=new C();recognition.lang='en-US';recognition.continuous=true;recognition.interimResults=false;recognition.onstart=()=>{listening=true;$('mic').classList.add('live');$('mic').textContent='⏹ Stop voice chat'};recognition.onresult=e=>{const t=e.results[e.results.length-1][0].transcript;sendText(t)};recognition.onerror=()=>toast('Voice recognition had a problem — try again');recognition.onend=()=>{listening=false;$('mic').classList.remove('live');$('mic').textContent='🎙 Start voice chat'};recognition.start()}
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}})

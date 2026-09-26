@@ -155,7 +155,7 @@ function render(){
  $('pages').innerHTML=state.pages.map((p,i)=>'<button class="page '+(i===state.page?'active':'')+'" onclick="goPage('+i+')">'+escapeHtml(p.name)+'</button>').join('');
  $('insert').innerHTML=types.map(k=>'<button class="btn" data-add="'+k+'">+'+k+'</button>').join('');
  $('quick').innerHTML=['Build a portfolio','Build a restaurant site','Make it dark and premium','Add a contact form','Make it mobile friendly','Add a second page'].map(x=>'<button data-quick="'+escapeAttr(x)+'">'+escapeHtml(x)+'</button>').join('');document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(b.dataset.add)));document.querySelectorAll('[data-quick]').forEach(b=>b.addEventListener('click',()=>sendText(b.dataset.quick)));
- const c=$('canvas');c.style.background=cur().bg;c.innerHTML='<div class="grid"></div>'+cur().elements.map(e=>elementHtml(e)).join('');
+ const c=$('canvas');c.style.background=cur().bg;c.innerHTML='<div class="grid"></div>'+cur().elements.map(e=>elementHtml(e)).join('');bindCanvasEditing();
  $('inspector').innerHTML=sel()?inspector(sel()):'<div class="empty">Select an element on the canvas to edit it.</div>';save();
 }
 function elementHtml(e){
@@ -542,6 +542,54 @@ function toggleSpeech(){voiceOn=!voiceOn;$('speakBtn').textContent=voiceOn?'🔊
 function toggleVoice(){const C=window.SpeechRecognition||window.webkitSpeechRecognition;if(!C){toast('Speech recognition is not supported in this browser');return}if(listening){recognition.stop();return}recognition=new C();recognition.lang='en-US';recognition.continuous=true;recognition.interimResults=false;recognition.onstart=()=>{listening=true;$('mic').classList.add('live');$('mic').textContent='⏹ Stop voice chat'};recognition.onresult=e=>{const t=e.results[e.results.length-1][0].transcript;sendText(t)};recognition.onerror=()=>toast('Voice recognition had a problem — try again');recognition.onend=()=>{listening=false;$('mic').classList.remove('live');$('mic').textContent='🎙 Start voice chat'};recognition.start()}
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}})
 $('canvas').addEventListener('click',clearSelection);
+let dragState=null;
+function startDrag(ev){
+  const id=ev.currentTarget.dataset.id;
+  if(!id)return;
+  const e=cur().elements.find(x=>x.id===id);
+  if(!e)return;
+  state.selected=id;
+  checkpoint();
+  dragState={id,startX:ev.clientX,startY:ev.clientY,origX:e.x,origY:e.y};
+  ev.currentTarget.setPointerCapture?.(ev.pointerId);
+  ev.preventDefault();
+}
+function moveDrag(ev){
+  if(!dragState)return;
+  const e=cur().elements.find(x=>x.id===dragState.id);
+  if(!e)return;
+  e.x=Math.max(15,Math.min(1135-e.w,dragState.origX+(ev.clientX-dragState.startX)));
+  e.y=Math.max(10,Math.min(745-e.h,dragState.origY+(ev.clientY-dragState.startY)));
+  const el=ev.currentTarget;
+  el.style.left=e.x+'px';el.style.top=e.y+'px';
+  const ins=$('inspector'); if(ins&&sel()?.id===e.id){const x=$('x');const y=$('y');if(x)x.value=e.x;if(y)y.value=e.y}
+}
+function endDrag(){if(dragState){log('Moved element');render();}dragState=null}
+function bindCanvasEditing(){
+  document.querySelectorAll('#canvas .el').forEach(el=>{
+    const nodeId=el.getAttribute('onclick')?.match(/pick\(event,'([^']+)'\)/)?.[1];
+    if(nodeId)el.dataset.id=nodeId;
+    el.addEventListener('pointerdown',startDrag);
+    el.addEventListener('pointermove',moveDrag);
+    el.addEventListener('pointerup',endDrag);
+    el.addEventListener('pointercancel',endDrag);
+  });
+}
+document.addEventListener('keydown',ev=>{
+  if(!state.selected||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+  const e=sel(); if(!e)return;
+  const step=ev.shiftKey?10:2;
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)){
+    checkpoint();
+    if(ev.key==='ArrowLeft')e.x=Math.max(15,e.x-step);
+    if(ev.key==='ArrowRight')e.x=Math.min(1135-e.w,e.x+step);
+    if(ev.key==='ArrowUp')e.y=Math.max(10,e.y-step);
+    if(ev.key==='ArrowDown')e.y=Math.min(745-e.h,e.y+step);
+    render();ev.preventDefault();
+  }
+  if(ev.key==='Delete'){del();ev.preventDefault();}
+});
+
 render();addMsg('ai','Hey — I’m ready. Talk to me naturally. You can say “build me a portfolio,” then keep talking: “make it darker,” “add an about page,” “put a contact form there,” or “change the hero.” I’ll keep the site context.');
 log('Conversational builder ready');
 </script></body></html>

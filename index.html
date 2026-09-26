@@ -133,7 +133,7 @@ window.WipBrainReady = (async () => {
 const types=['heading','text','button','card','image','nav','badge','stat','input','textarea','footer','circle','divider'];
 const defaults={heading:'New heading',text:'New text',button:'Button',card:'New card',image:'Image placeholder',badge:'NEW',stat:'24.8K\\nVisitors',input:'Email address',textarea:'Tell us about your project…',footer:'© 2026 Your Brand · All rights reserved.',nav:'Home   About   Contact',circle:'',divider:''};
 let history=[],future=[],logs=[],voiceOn=true,mode='local',recognition=null,listening=false;
-const make=(kind,text,x,y,w,h,size=18,bg='#fff',color='#111')=>({id:crypto.randomUUID(),kind,text,x,y,w,h,size,bg,color,radius:kind==='button'?12:kind==='circle'?999:kind==='badge'?999:10,animation:'none',action:'',section:'content',mobile:{x:null,y:null,w:null,h:null,size:null,hidden:false},z:1});
+const make=(kind,text,x,y,w,h,size=18,bg='#fff',color='#111')=>({id:crypto.randomUUID(),kind,text,x,y,w,h,size,bg,color,radius:kind==='button'?12:kind==='circle'?999:kind==='badge'?999:10,animation:'none',action:'',section:'content',src:'',alt:'',aria:'',mobile:{x:null,y:null,w:null,h:null,size:null,hidden:false},z:1});
 const starter=()=>({name:'Home',bg:'#fff',elements:[
 make('nav','MY WEBSITE                         Home   About   Contact',55,28,1090,55,14,'#fff','#111'),
 make('heading','Build something real.',90,145,760,115,68,'transparent','#111'),
@@ -163,7 +163,12 @@ function elementHtml(e){
   const pad=(e.kind==='button'||e.kind==='circle'||e.kind==='badge'?'0':'12px');
   const m=e.mobile||{};
   const vars=(m.x!=null?'--mx:'+m.x+'px;':'')+(m.y!=null?'--my:'+m.y+'px;':'')+(m.w!=null?'--mw:'+m.w+'px;':'')+(m.h!=null?'--mh:'+m.h+'px;':'')+(m.size!=null?'--ms:'+m.size+'px;':'');
-  return '<div class="el '+e.kind+' '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+vars+'" onclick="pick(event,\\''+e.id+'\\')">'+escapeHtml(e.text)+'</div>'
+  const safeAction=escapeAttr(e.action||'');
+  const aria=escapeAttr(e.aria||e.text||e.kind);
+  if(e.kind==='image' && e.src){
+    return '<div class="el image '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;z-index:'+Number(e.z||1)+';'+vars+'" onclick="pick(event,\\''+e.id+'\\')"><img src="'+escapeAttr(e.src)+'" alt="'+escapeAttr(e.alt||e.text||'Image')+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"></div>';
+  }
+  return '<div class="el '+e.kind+' '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'" aria-label="'+aria+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+vars+'" onclick="pick(event,\\''+e.id+'\\')">'+escapeHtml(e.text)+'</div>'
 }
 function inspector(e){return '<div class="field"><label>CONTENT</label><textarea id="t" rows="3">'+escapeHtml(e.text)+'</textarea></div><div class="two"><div class="field"><label>X</label><input id="x" type="number" value="'+e.x+'"></div><div class="field"><label>Y</label><input id="y" type="number" value="'+e.y+'"></div></div><div class="two"><div class="field"><label>WIDTH</label><input id="w" type="number" value="'+e.w+'"></div><div class="field"><label>HEIGHT</label><input id="h" type="number" value="'+e.h+'"></div></div><div class="two"><div class="field"><label>FONT</label><input id="s" type="number" value="'+e.size+'"></div><div class="field"><label>RADIUS</label><input id="r" type="number" value="'+e.radius+'"></div></div><div class="two"><div class="field"><label>BACKGROUND</label><input id="bg" value="'+e.bg+'"></div><div class="field"><label>TEXT COLOR</label><input id="co" value="'+e.color+'"></div></div><div class="field"><label>INTERACTION</label><input id="act" value="'+escapeAttr(e.action||'')+'"></div><div class="field"><label>ANIMATION</label><select id="a">'+['none','float','pulse','spin'].map(x=>'<option '+(x===e.animation?'selected':'')+'>'+x+'</option>').join('')+'</select></div><button class="btn dark" style="width:100%" onclick="apply()">Apply changes</button><button class="btn" style="width:100%;margin-top:6px" onclick="del()">Delete</button>'}
 function add(k,text){checkpoint();const n=cur().elements.length,e=make(k,text||defaults[k],70+(n*47)%700,80+(n*43)%500,k==='heading'?650:k==='circle'?150:k==='button'?190:k==='divider'?700:320,k==='heading'?120:k==='circle'?150:k==='divider'?2:k==='nav'?55:120,k==='heading'?54:k==='text'?20:17,k==='button'?'#111':k==='card'?'#f4f4f1':k==='image'?'#e8e8e5':'transparent',k==='button'?'#fff':'#111');cur().elements.push(e);state.selected=e.id;log('Added '+k);render()}
@@ -285,12 +290,13 @@ rename_page {"name":"..."}
 clear_page {}
 background {"color":"#hex"}
 theme {"theme":"dark|light|red|blue|luxury|minimal"}
-add {"kind":"nav|heading|text|button|card|image|circle|divider","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"#hex or transparent","color":"#hex","radius":0,"animation":"none|float|pulse|spin","action":"intent"}
+add {"kind":"nav|heading|text|button|card|image|badge|stat|input|textarea|footer|circle|divider","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"#hex or transparent","color":"#hex","radius":0,"animation":"none|float|pulse|spin","action":"intent","section":"...","mobile":{},"src":"image URL if known","alt":"accessible image description","aria":"accessible label"}
 update {"match":"existing text or kind","text":"...","x":0,"y":0,"w":0,"h":0,"size":0,"bg":"...","color":"...","radius":0,"animation":"...","action":"..."}
 delete {"match":"existing text or kind"}
 duplicate {"match":"existing text or kind","x":0,"y":0}
 reorder {"match":"existing text or kind","z":1}
 site_meta {"name":"...","description":"..."}
+design_system {"font":"...","background":"#...","foreground":"#...","muted":"#...","accent":"#...","radius":0,"spacing":0}
 
 BUILD RULES:
 - Think in outcomes, not keywords.
@@ -389,6 +395,7 @@ function executeAgentOps(ops){
       e.animation=['none','float','pulse','spin'].includes(o.animation)?String(o.animation):'none';
       e.action=String(o.action||'');
       e.section=String(o.section||'content');
+      e.src=String(o.src||'');e.alt=String(o.alt||'');e.aria=String(o.aria||'');
       if(o.mobile&&typeof o.mobile==='object')e.mobile={...e.mobile,...o.mobile};
       if(o.z!=null)e.z=Number(o.z)||1;
       cur().elements.push(e);state.selected=e.id;continue
@@ -399,6 +406,7 @@ function executeAgentOps(ops){
       if(o.text!=null)real.text=String(o.text);
       for(const key of ['x','y','w','h','size','radius'])if(o[key]!=null)real[key]=Number(o[key]);
       for(const key of ['bg','color','animation','action','section'])if(o[key]!=null)real[key]=String(o[key]);
+      for(const key of ['src','alt','aria'])if(o[key]!=null)real[key]=String(o[key]);
       if(o.mobile&&typeof o.mobile==='object')real.mobile={...(real.mobile||{}),...o.mobile};
       if(o.z!=null)real.z=Number(o.z)||1;
       state.page=pageIndex;state.selected=real.id;continue
@@ -420,6 +428,11 @@ function executeAgentOps(ops){
       state.site.description=String(o.description||state.site.description||'');
       document.title=state.site.name+' — AI Website Builder';
     }
+    if(k==='design_system'){
+      state.site.designSystem={font:String(o.font||state.site.designSystem?.font||'Inter'),background:String(o.background||state.site.designSystem?.background||cur().bg),foreground:String(o.foreground||'#111'),muted:String(o.muted||'#666'),accent:String(o.accent||state.site.accent||'#111'),radius:Number(o.radius??12),spacing:Number(o.spacing??24)};
+      if(o.background){state.pages.forEach(p=>p.bg=String(o.background));}
+      state.site.font=state.site.designSystem.font;state.site.accent=state.site.designSystem.accent;
+    }
   }
   render();
   log('AI built '+ops.length+' operation'+(ops.length===1?'':'s'));
@@ -429,34 +442,36 @@ function validateSite(){
   const ids=new Set();
   for(const [pi,p] of state.pages.entries()){
     if(!p.name||!String(p.name).trim())issues.push('Page '+pi+' has no name.');
-    for(const e of (p.elements||[])){
+    const elements=p.elements||[];
+    for(const e of elements){
       if(ids.has(e.id))issues.push('Duplicate element id found.');
       ids.add(e.id);
       if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.w)||!Number.isFinite(e.h))issues.push('Element '+e.text+' has invalid geometry.');
       if(e.w<=4||e.h<=0)issues.push('Element '+e.text+' is effectively invisible.');
       if(e.x<15||e.y<10||e.x+e.w>1185||e.y+e.h>755)issues.push('Element '+e.text+' is outside the editor canvas.');
       if(String(e.text||'').trim().length>260)issues.push('Element '+e.text.slice(0,40)+' has excessive copy.');
+      if(e.kind==='image' && e.src && !/^https?:\\/\\//i.test(e.src))issues.push('Image '+(e.text||'image')+' has a non-http asset URL.');
+      if((e.kind==='button'||e.kind==='input'||e.kind==='textarea')&&!String(e.aria||e.text||'').trim())issues.push(e.kind+' has no accessible label.');
     }
-    if(p.elements.length>4 && !p.elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');
-    const names=new Set();
-    for(const e of p.elements){
-      if(e.section)names.add(String(e.section));
-      if(e.action&&/open page:/i.test(e.action)){
-        const n=String(e.action).slice(String(e.action).toLowerCase().indexOf('open page:')+10).trim().toLowerCase();
-        if(n&&!state.pages.some(q=>String(q.name).toLowerCase()===n))issues.push('Interaction points to missing page '+n+'.');
+    if(elements.length>4&&!elements.some(e=>e.kind==='nav'))issues.push('Page '+p.name+' has no navigation.');
+    if(elements.length>5&&!elements.some(e=>e.kind==='heading'))issues.push('Page '+p.name+' has no heading.');
+    for(let i=0;i<elements.length;i++){
+      for(let j=i+1;j<elements.length;j++){
+        const a=elements[i],b=elements[j];
+        if(a.kind==='circle'||b.kind==='circle'||a.kind==='image'||b.kind==='image')continue;
+        const overlap=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+        const minArea=Math.min(Math.max(1,a.w*a.h),Math.max(1,b.w*b.h));
+        if(overlap>80 && overlap/minArea>.28 && Math.abs((a.z||1)-(b.z||1))<2)issues.push('Potential collision between "'+(a.text||a.kind)+'" and "'+(b.text||b.kind)+'".');
       }
     }
-    if(p.elements.length>8 && names.size<2)issues.push('Page '+p.name+' lacks semantic section organization.');
-
-    if(p.elements.length>5 && !p.elements.some(e=>e.kind==='heading'))issues.push('Page '+p.name+' has no heading.');
   }
-  return [...new Set(issues)].slice(0,18);
+  return [...new Set(issues)].slice(0,28);
 }
 async function selfCheckAndRepair(userText){
   let issues=validateSite();
   for(let pass=1;pass<=2;pass++){
     $('aiStatus').textContent='Inspecting build · AI QA pass '+pass;
-    const reviewPrompt='Perform a strict senior frontend/UX QA pass on the website after the latest build. Look for missing requested functionality, broken hierarchy, collisions, poor spacing, weak copy, missing navigation, obvious canvas overflow and inconsistent styling. Return JSON ONLY: {"approved":true|false,"summary":"brief","repairOperations":[...],"memory":{"facts":[],"decisions":[],"preferences":[],"constraints":[]}}. Use only the allowed operations. Do not rewrite a healthy site. User request: '+userText+'\nDeterministic validation: '+JSON.stringify(issues)+'\nCurrent state: '+JSON.stringify(compactState());
+    const reviewPrompt='Perform a strict senior frontend/UX QA pass on the website after the latest build. Look for missing requested functionality, component collisions, bad spacing, inaccessible controls, missing navigation, obvious canvas overflow, weak copy, inconsistent styling, broken page links, and elements that are visually unusable. Return JSON ONLY: {"approved":true|false,"summary":"brief","repairOperations":[...],"memory":{"facts":[],"decisions":[],"preferences":[],"constraints":[]}}. Use only the allowed operations. Do not rewrite a healthy site. User request: '+userText+'\nDeterministic validation: '+JSON.stringify(issues)+'\nCurrent state: '+JSON.stringify(compactState());
     const review=await window.WipBrain.run([
       {role:'system',content:BRAIN_SYSTEM+'\nYou are now the senior QA and repair agent. Inspect the already-built site. Your only job is to find real problems and return targeted repair operations. Never expose hidden reasoning.'},
       {role:'user',content:reviewPrompt}

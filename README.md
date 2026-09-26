@@ -1,42 +1,61 @@
 # THE WEBSITE IN PROGRESS
 
-A conversational AI website builder with a real in-browser language model.
+## WIP Brain
 
-## What changed
+The editor contains a custom autonomous website-building intelligence layer called **WIP Brain**.
 
-The project no longer uses Ollama or a fake keyword-command AI. The new intelligence layer runs the language model directly in the browser through WebGPU and WebLLM, while the website-building logic, website state, planner contract, operation executor, history, renderer, and interaction system are custom code in this project.
+It does not use Ollama and does not require a cloud AI API key. The language-model inference runs in the browser through WebGPU/WebLLM, while the agent architecture around the model is custom to this repository.
 
-The browser model is downloaded once and cached locally after the first run. WebLLM supports in-browser inference and OpenAI-style chat completion APIs; its current prebuilt model list includes low-resource Llama 3.2 1B/3B variants. WebGPU availability depends on the browser/device.
+### Autonomous loop
 
-## Agent loop
+Every user request can flow through:
 
-1. Read the conversation memory.
-2. Inspect the current website state.
-3. Understand the latest request.
-4. Produce a multi-step build plan as structured operations.
-5. Execute the operations against the live website state.
-6. Validate the resulting structure in code.
-7. Render the updated site.
-8. Keep the result in memory for the next request.
+1. Understand the conversation and current site.
+2. Plan concrete website changes.
+3. Execute structured build operations.
+4. Persist project memory.
+5. Run deterministic validation.
+6. Run a separate AI senior-QA pass.
+7. Apply targeted repairs.
+8. Return to the same project for the next request.
+
+### Maximum brain
+
+The browser AI now ranks supported models and attempts the strongest compatible option first. The current WebLLM configuration includes Hermes-3 Llama 3.1 8B variants, including a q4f32 variant and a q4f16 variant. WebLLM's official configuration also identifies the Hermes-3 Llama 3.1 8B models as supporting function calling.
+
+Because an 8B browser model can require several GB of GPU memory, WIP Brain automatically falls back to smaller supported models if the strongest candidate cannot load.
+
+### What “strongest model in the world” means here
+
+This repository can realistically become an extremely strong **specialized website-building agent**, but it is not truthful to claim that a small web application has trained a new frontier-scale general-purpose foundation model from zero. Frontier pretraining requires enormous datasets, accelerator clusters, evaluation infrastructure and research.
+
+The strategy in this project is instead:
+
+**strong compatible base model + custom agent architecture + persistent project memory + structured website tools + deterministic validation + AI critique + self-repair**
+
+That architecture is what lets the product behave like an autonomous website engineer rather than a keyword command parser.
 
 ## Example conversation
 
-- “Build me a portfolio for a 3D designer.”
-- “Make it much darker and more cinematic.”
-- “Add a Work page with three projects.”
-- “Give the hero a huge title and an animated circle.”
-- “Add a contact section at the bottom.”
-- “Make the navigation open the Work page.”
-- “Now simplify the typography and give everything more breathing room.”
+“Build me a premium portfolio for a 3D designer.”
 
-No Ollama installation or cloud API key is required for the browser AI path.
+“Make it darker and more cinematic.”
+
+“Add a Work page.”
+
+“Give the hero a huge title and an animated visual.”
+
+“Add a contact section.”
+
+“Make the navigation open the Work page.”
+
+“Now make mobile feel intentionally designed.”
+
+WIP Brain keeps the website and the important conversation context available for every request.
 
 ## Requirements
 
-- A modern Chromium-based browser with WebGPU enabled/supporting the device.
-- Internet access on first model load so the browser can download model assets.
-- Enough GPU memory for the selected model. The app prefers a low-resource 3B Llama 3.2 model and can fall back to a 1B model.
-
-## Important limitation
-
-This is a custom AI agent system, not a new frontier-scale language model trained from random initialization. Training a model comparable to ChatGPT from scratch requires a very large training corpus and substantial compute. This project instead builds the website-builder intelligence, agent loop, memory, tools, and renderer from scratch while running an open model locally in the browser.
+- Modern Chromium-based browser with WebGPU.
+- Internet access for the first model download.
+- Enough GPU memory for at least one compatible model.
+- Model assets are cached by the browser after download.

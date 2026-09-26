@@ -166,10 +166,13 @@ function elementHtml(e){
   const vars=(m.x!=null?'--mx:'+m.x+'px;':'')+(m.y!=null?'--my:'+m.y+'px;':'')+(m.w!=null?'--mw:'+m.w+'px;':'')+(m.h!=null?'--mh:'+m.h+'px;':'')+(m.size!=null?'--ms:'+m.size+'px;':'');
   const safeAction=escapeAttr(e.action||'');
   const aria=escapeAttr(e.aria||e.text||e.kind);
+  const base=' data-id="'+escapeAttr(e.id)+'" aria-label="'+aria+'" data-action="'+safeAction+'"';
+  const style=' style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;'+(e.kind==='button'?'border:0;':'')+'z-index:'+Number(e.z||1)+';'+vars+(e.hidden?'display:none;':'')+'"';
+  const classes=' class="el '+e.kind+' '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'"';
   if(e.kind==='image' && e.src){
-    return '<div class="el image '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;z-index:'+Number(e.z||1)+';'+vars+(e.hidden?'display:none;':'')+'" onclick="pick(event,\\''+e.id+'\\')"><img src="'+escapeAttr(e.src)+'" alt="'+escapeAttr(e.alt||e.text||'Image')+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"></div>';
+    return '<div'+classes+base+style+'><img src="'+escapeAttr(e.src)+'" alt="'+escapeAttr(e.alt||e.text||'Image')+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"></div>';
   }
-  return '<div class="el '+e.kind+' '+(e.animation!=='none'?'anim-'+e.animation:'')+' '+(e.id===state.selected?'selected':'')+'" aria-label="'+aria+'" style="left:'+e.x+'px;top:'+e.y+'px;width:'+e.w+'px;height:'+e.h+'px;background:'+e.bg+';color:'+e.color+';font-size:'+e.size+'px;border-radius:'+e.radius+'px;padding:'+pad+';z-index:'+Number(e.z||1)+';'+vars+(e.hidden?'display:none;':'')+'" onclick="pick(event,\\''+e.id+'\\')">'+escapeHtml(e.text)+'</div>'
+  return '<div'+classes+base+style+'>'+escapeHtml(e.text)+'</div>';
 }
 function inspector(e){return '<div class="field"><label>CONTENT</label><textarea id="t" rows="3">'+escapeHtml(e.text)+'</textarea></div><div class="two"><div class="field"><label>X</label><input id="x" type="number" value="'+e.x+'"></div><div class="field"><label>Y</label><input id="y" type="number" value="'+e.y+'"></div></div><div class="two"><div class="field"><label>WIDTH</label><input id="w" type="number" value="'+e.w+'"></div><div class="field"><label>HEIGHT</label><input id="h" type="number" value="'+e.h+'"></div></div><div class="two"><div class="field"><label>FONT</label><input id="s" type="number" value="'+e.size+'"></div><div class="field"><label>RADIUS</label><input id="r" type="number" value="'+e.radius+'"></div></div><div class="two"><div class="field"><label>BACKGROUND</label><input id="bg" value="'+e.bg+'"></div><div class="field"><label>TEXT COLOR</label><input id="co" value="'+e.color+'"></div></div><div class="field"><label>INTERACTION</label><input id="act" value="'+escapeAttr(e.action||'')+'"></div><div class="field"><label>ANIMATION</label><select id="a">'+['none','float','pulse','spin'].map(x=>'<option '+(x===e.animation?'selected':'')+'>'+x+'</option>').join('')+'</select></div><button class="btn dark" style="width:100%" onclick="apply()">Apply changes</button><button class="btn" style="width:100%;margin-top:6px" onclick="del()">Delete</button>'}
 function add(k,text){checkpoint();const n=cur().elements.length,e=make(k,text||defaults[k],70+(n*47)%700,80+(n*43)%500,k==='heading'?650:k==='circle'?150:k==='button'?190:k==='divider'?700:320,k==='heading'?120:k==='circle'?150:k==='divider'?2:k==='nav'?55:120,k==='heading'?54:k==='text'?20:17,k==='button'?'#111':k==='card'?'#f4f4f1':k==='image'?'#e8e8e5':'transparent',k==='button'?'#fff':'#111');cur().elements.push(e);state.selected=e.id;log('Added '+k);render()}
@@ -773,8 +776,7 @@ function moveDrag(ev){
 function endDrag(){if(dragState){log('Moved element');render();}dragState=null}
 function bindCanvasEditing(){
   document.querySelectorAll('#canvas .el').forEach(el=>{
-    const nodeId=el.getAttribute('onclick')?.match(/pick\(event,'([^']+)'\)/)?.[1];
-    if(nodeId)el.dataset.id=nodeId;
+    const nodeId=el.dataset.id;
     el.addEventListener('pointerdown',startDrag);
     el.addEventListener('pointermove',moveDrag);
     el.addEventListener('pointerup',endDrag);
